@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
+import type { PromoBannerSlide } from '../types/index.ts';
 
 export const cities = pgTable('cities', {
   id: text('id').primaryKey(),
@@ -39,6 +40,7 @@ export const settings = pgTable('settings', {
   commissionRate: doublePrecision('commission_rate').notNull().default(2.5),
   minListingPrice: integer('min_listing_price').notNull().default(500),
   maxPhotosPerListing: integer('max_photos_per_listing').notNull().default(5),
+  promoBanners: jsonb('promo_banners').$type<PromoBannerSlide[] | null>(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

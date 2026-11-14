@@ -16,6 +16,7 @@ import {
   INITIAL_CATEGORIES,
   INITIAL_CITIES,
   INITIAL_LISTINGS,
+  INITIAL_PROMO_BANNERS,
   INITIAL_REPORTS,
   INITIAL_SETTINGS,
   INITIAL_TRANSACTIONS,
@@ -109,6 +110,9 @@ const mapSettingsRow = (
   commissionRate: row.commissionRate,
   minListingPrice: row.minListingPrice,
   maxPhotosPerListing: row.maxPhotosPerListing,
+  promoBanners: Array.isArray(row.promoBanners)
+    ? row.promoBanners
+    : INITIAL_PROMO_BANNERS,
   updatedAt: toIso(row.updatedAt),
 });
 
@@ -304,6 +308,7 @@ export async function seedInitialDatabase(force = false, adminUid?: string): Pro
       commissionRate: INITIAL_SETTINGS.commissionRate,
       minListingPrice: INITIAL_SETTINGS.minListingPrice,
       maxPhotosPerListing: INITIAL_SETTINGS.maxPhotosPerListing,
+      promoBanners: INITIAL_PROMO_BANNERS,
       updatedAt: new Date(),
     };
     if (force) {
@@ -952,6 +957,10 @@ export async function updateSettingsRecord(
         newSettings.maxPhotosPerListing ??
         current?.maxPhotosPerListing ??
         INITIAL_SETTINGS.maxPhotosPerListing,
+      promoBanners:
+        newSettings.promoBanners !== undefined
+          ? newSettings.promoBanners
+          : (current?.promoBanners ?? INITIAL_PROMO_BANNERS),
       updatedAt: new Date(),
     };
 

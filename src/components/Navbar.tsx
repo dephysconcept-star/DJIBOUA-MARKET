@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 import { LokodaLogo } from './LokodaLogo';
+import { PromoBannerCarousel } from './PromoBannerCarousel';
 
 interface NavbarProps {
   onOpenPublishModal: () => void;
@@ -440,6 +441,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Advertising Carousel Banner in Nav (Admin Editable Only) */}
+      <PromoBannerCarousel onOpenPublishModal={handlePublishClick} />
     </header>
   );
 };

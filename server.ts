@@ -628,6 +628,28 @@ async function startServer() {
   app.put('/api/admin/settings', requireAdmin, async (req: AuthRequest, res) => {
     try {
       const body = req.body || {};
+      const validThemes = new Set(['royal', 'gold', 'emerald', 'crimson']);
+      const promoBanners = Array.isArray(body.promoBanners)
+        ? body.promoBanners
+            .slice(0, 12)
+            .map((raw: Record<string, unknown>, idx: number) => ({
+              id: safeId(String(raw?.id || `pub_${Date.now()}_${idx}`)),
+              badge: clampStr(raw?.badge, 40) || undefined,
+              title: clampStr(raw?.title, 180),
+              subtitle: clampStr(raw?.subtitle, 260) || undefined,
+              ctaLabel: clampStr(raw?.ctaLabel, 40) || undefined,
+              ctaUrl: clampStr(raw?.ctaUrl, 400) || undefined,
+              imageUrl: clampStr(raw?.imageUrl, 150000) || undefined,
+              theme: (validThemes.has(String(raw?.theme)) ? String(raw?.theme) : 'royal') as
+                | 'royal'
+                | 'gold'
+                | 'emerald'
+                | 'crimson',
+              active: Boolean(raw?.active ?? true),
+            }))
+            .filter((slide: { title: string }) => slide.title.length > 0)
+        : undefined;
+
       const updated = await updateSettingsRecord({
         siteName: body.siteName !== undefined ? clampStr(body.siteName, 100) : undefined,
         tagline: body.tagline !== undefined ? clampStr(body.tagline, 250) : undefined,
@@ -647,6 +669,7 @@ async function startServer() {
           body.minListingPrice !== undefined ? Number(body.minListingPrice) : undefined,
         maxPhotosPerListing:
           body.maxPhotosPerListing !== undefined ? Number(body.maxPhotosPerListing) : undefined,
+        promoBanners,
       });
       await createAdminLogRecord({
         action: 'Paramètres modifiés',

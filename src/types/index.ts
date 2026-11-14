@@ -149,6 +149,20 @@ export interface AdminLog {
   details?: string;
 }
 
+export type PromoBannerTheme = 'royal' | 'gold' | 'emerald' | 'crimson';
+
+export interface PromoBannerSlide {
+  id: string;
+  badge?: string;
+  title: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  imageUrl?: string;
+  theme?: PromoBannerTheme;
+  active: boolean;
+}
+
 export interface PlatformSettings {
   siteName: string;
   tagline: string;
@@ -162,6 +176,7 @@ export interface PlatformSettings {
   commissionRate: number; // percentage (e.g., 2.5)
   minListingPrice: number;
   maxPhotosPerListing: number;
+  promoBanners?: PromoBannerSlide[];
   updatedAt?: string;
 }
 

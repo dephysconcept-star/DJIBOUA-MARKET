@@ -3,6 +3,7 @@ import {
   INITIAL_CATEGORIES,
   INITIAL_CITIES,
   INITIAL_LISTINGS,
+  INITIAL_PROMO_BANNERS,
   INITIAL_REPORTS,
   INITIAL_SETTINGS,
   INITIAL_TRANSACTIONS,
@@ -16,6 +17,7 @@ import type {
   City,
   Listing,
   PlatformSettings,
+  PromoBannerSlide,
   Report,
   Transaction,
   UserProfile,
@@ -111,6 +113,9 @@ const mapSettingsRow = (
   commissionRate: Number(row.commission_rate ?? 2.5),
   minListingPrice: Number(row.min_listing_price ?? 500),
   maxPhotosPerListing: Number(row.max_photos_per_listing ?? 5),
+  promoBanners: Array.isArray(row.promo_banners)
+    ? (row.promo_banners as PromoBannerSlide[])
+    : INITIAL_PROMO_BANNERS,
   updatedAt: toIso(row.updated_at),
 });
 
@@ -1002,6 +1007,11 @@ export async function updateSettingsRecordSupabase(
         newSettings.maxPhotosPerListing ??
         current?.max_photos_per_listing ??
         INITIAL_SETTINGS.maxPhotosPerListing,
+      ...(newSettings.promoBanners !== undefined
+        ? { promo_banners: newSettings.promoBanners }
+        : current && 'promo_banners' in current
+          ? { promo_banners: current.promo_banners }
+          : {}),
       updated_at: new Date().toISOString(),
     };
 

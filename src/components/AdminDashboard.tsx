@@ -23,10 +23,19 @@ import {
   RefreshCw,
   LogOut,
   Sliders,
-  DollarSign
+  DollarSign,
+  Megaphone,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  Upload,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
-import { Listing, UserProfile, City, Category, PlatformSettings } from '../types';
+import { INITIAL_PROMO_BANNERS } from '../data/initialData';
+import { PromoBannerCarousel } from './PromoBannerCarousel';
+import { Listing, UserProfile, City, Category, PlatformSettings, PromoBannerSlide, PromoBannerTheme } from '../types';
 
 export const AdminDashboard: React.FC = () => {
   const { 
@@ -91,8 +100,21 @@ export const AdminDashboard: React.FC = () => {
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'moderation' | 'users' | 'locations' | 'finance' | 'reports' | 'settings' | 'logs'
+    'overview' | 'moderation' | 'users' | 'locations' | 'finance' | 'reports' | 'banners' | 'settings' | 'logs'
   >('overview');
+
+  // Promo Banners Draft State (Admin Only)
+  const [draftBanners, setDraftBanners] = useState<PromoBannerSlide[]>(
+    () => settings.promoBanners || INITIAL_PROMO_BANNERS
+  );
+  const [isSavingBanners, setIsSavingBanners] = useState(false);
+  const [bannerStatusMsg, setBannerStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  React.useEffect(() => {
+    if (settings.promoBanners) {
+      setDraftBanners(settings.promoBanners);
+    }
+  }, [settings.promoBanners]);
 
   // Search & Filter state
   const [searchModQuery, setSearchModQuery] = useState('');
@@ -402,6 +424,16 @@ export const AdminDashboard: React.FC = () => {
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Signalements ({reports.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('banners')}
+            className={`px-3 py-2 rounded-lg transition-colors shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'banners' ? 'bg-amber-400 text-blue-950 font-bold' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>Bannière Pub ({draftBanners.filter(b => b.active).length})</span>
           </button>
 
           <button
@@ -1412,7 +1444,413 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 7: SETTINGS & SECTION 22 CHOICES (Section 7.9 & 22) */}
+        {/* TAB 7: BANNERS / NAV CAROUSEL (ADMIN ONLY) */}
+        {activeTab === 'banners' && (() => {
+          const handleAddSlide = () => {
+            const newSlide: PromoBannerSlide = {
+              id: `pub_${Date.now()}`,
+              badge: 'PROMO',
+              title: 'Nouvelle offre DJIBOUA MARKET',
+              subtitle: 'Profitez des meilleurs prix à Divo, Lakota, Gagnoa & Guitry.',
+              ctaLabel: 'Voir les offres',
+              ctaUrl: '#listings',
+              theme: 'royal',
+              active: true,
+            };
+            setDraftBanners((prev) => [...prev, newSlide]);
+            setBannerStatusMsg(null);
+          };
+
+          const updateSlide = (index: number, patch: Partial<PromoBannerSlide>) => {
+            setDraftBanners((prev) =>
+              prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item))
+            );
+            setBannerStatusMsg(null);
+          };
+
+          const moveSlide = (index: number, direction: -1 | 1) => {
+            const target = index + direction;
+            if (target < 0 || target >= draftBanners.length) return;
+            setDraftBanners((prev) => {
+              const copy = [...prev];
+              const [removed] = copy.splice(index, 1);
+              copy.splice(target, 0, removed);
+              return copy;
+            });
+            setBannerStatusMsg(null);
+          };
+
+          const deleteSlide = (index: number) => {
+            setDraftBanners((prev) => prev.filter((_, idx) => idx !== index));
+            setBannerStatusMsg(null);
+          };
+
+          const handleUploadBannerImage = (index: number, file: File) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const maxWidth = 600;
+                const scale = Math.min(1, maxWidth / img.width);
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                  updateSlide(index, { imageUrl: canvas.toDataURL('image/jpeg', 0.82) });
+                }
+              };
+              if (typeof reader.result === 'string') {
+                img.src = reader.result;
+              }
+            };
+            reader.readAsDataURL(file);
+          };
+
+          const handleSaveBanners = async () => {
+            const invalid = draftBanners.some((b) => !b.title.trim());
+            if (invalid) {
+              setBannerStatusMsg({
+                type: 'err',
+                text: 'Chaque bannière doit obligatoirement comporter un titre.',
+              });
+              return;
+            }
+            setIsSavingBanners(true);
+            setBannerStatusMsg(null);
+            try {
+              await updateSettings({ promoBanners: draftBanners });
+              setBannerStatusMsg({
+                type: 'ok',
+                text: 'Carrousel publicitaire enregistré et mis en ligne dans la barre de navigation !',
+              });
+            } catch (err) {
+              setBannerStatusMsg({
+                type: 'err',
+                text:
+                  err instanceof Error
+                    ? err.message
+                    : "Erreur lors de l'enregistrement. Vérifiez votre connexion Google Admin.",
+              });
+            } finally {
+              setIsSavingBanners(false);
+            }
+          };
+
+          return (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <Megaphone className="w-5 h-5 text-blue-700" />
+                    <span>Bannière Publicitaire de la Navigation (Carrousel)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Seul l'administrateur peut créer, modifier, ordonner ou masquer les publicités affichées dans la barre de navigation.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftBanners(INITIAL_PROMO_BANNERS);
+                      setBannerStatusMsg(null);
+                    }}
+                    className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition"
+                  >
+                    Modèles par défaut
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddSlide}
+                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-blue-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Ajouter une pub</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingBanners}
+                    onClick={() => void handleSaveBanners()}
+                    className="px-4 py-2 bg-blue-900 hover:bg-blue-950 disabled:opacity-60 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition"
+                  >
+                    <Check className="w-4 h-4 text-amber-400" />
+                    <span>{isSavingBanners ? 'Enregistrement...' : 'Enregistrer et publier'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {bannerStatusMsg && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-semibold border ${
+                    bannerStatusMsg.type === 'ok'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  {bannerStatusMsg.text}
+                </div>
+              )}
+
+              {/* Live Preview */}
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700">
+                    Aperçu en direct dans la barre de navigation ({draftBanners.filter((b) => b.active).length} slide(s) active(s))
+                  </span>
+                  <span className="text-[11px] text-slate-500">Défilement automatique toutes les 5s</span>
+                </div>
+                {draftBanners.some((b) => b.active && b.title.trim()) ? (
+                  <PromoBannerCarousel slides={draftBanners} previewMode />
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-400">
+                    Aucune publicité active : la bannière est actuellement masquée sur le site.
+                  </div>
+                )}
+              </div>
+
+              {/* Slides Editor List */}
+              {draftBanners.length === 0 ? (
+                <div className="bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center space-y-3">
+                  <Megaphone className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-xs font-semibold text-slate-600">
+                    Aucune bannière publicitaire configurée.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAddSlide}
+                    className="px-4 py-2 bg-blue-900 text-white rounded-xl text-xs font-bold"
+                  >
+                    Créer ma première bannière pub
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {draftBanners.map((slide, idx) => (
+                    <div
+                      key={slide.id}
+                      className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 text-xs ${
+                        slide.active ? 'border-slate-200' : 'border-slate-200 opacity-75 bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-blue-900 text-amber-400 font-black flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <span className="font-black text-slate-900 text-sm">
+                            {slide.title || 'Bannière sans titre'}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              slide.active
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {slide.active ? 'Visible' : 'Masquée'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => updateSlide(idx, { active: !slide.active })}
+                            className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
+                              slide.active
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                            }`}
+                            title={slide.active ? 'Masquer cette pub' : 'Activer cette pub'}
+                          >
+                            {slide.active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            <span>{slide.active ? 'Active' : 'Masquée'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => moveSlide(idx, -1)}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                            title="Monter"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === draftBanners.length - 1}
+                            onClick={() => moveSlide(idx, 1)}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                            title="Descendre"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteSlide(idx)}
+                            className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                            title="Supprimer cette bannière"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Badge (optionnel)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={40}
+                            placeholder="Ex: PROMO FLASH, SPONSORISÉ..."
+                            value={slide.badge || ''}
+                            onChange={(e) => updateSlide(idx, { badge: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Titre publicitaire *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            maxLength={180}
+                            placeholder="Ex: Grand Déstockage Smartphones à Divo — -20% cette semaine !"
+                            value={slide.title}
+                            onChange={(e) => updateSlide(idx, { title: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Sous-titre / Précision (optionnel)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={260}
+                            placeholder="Ex: Livraison rapide sur Divo, Lakota, Gagnoa et Guitry."
+                            value={slide.subtitle || ''}
+                            onChange={(e) => updateSlide(idx, { subtitle: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Couleur / Thème
+                          </label>
+                          <select
+                            value={slide.theme || 'royal'}
+                            onChange={(e) =>
+                              updateSlide(idx, { theme: e.target.value as PromoBannerTheme })
+                            }
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold"
+                          >
+                            <option value="royal">Bleu Royal & Or (DJIBOUA)</option>
+                            <option value="gold">Or & Bleu Nuit (Flash)</option>
+                            <option value="emerald">Vert Émeraude (Confiance)</option>
+                            <option value="crimson">Rouge Promo (Choc)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Texte du bouton d'action
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={40}
+                            placeholder="Ex: Voir l'offre, Contacter..."
+                            value={slide.ctaLabel || ''}
+                            onChange={(e) => updateSlide(idx, { ctaLabel: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Lien / Action au clic
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={400}
+                            placeholder="#listings, #publish, ou https://..."
+                            value={slide.ctaUrl || ''}
+                            onChange={(e) => updateSlide(idx, { ctaUrl: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                          />
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {[
+                              { label: 'Annonces', val: '#listings' },
+                              { label: 'Publier', val: '#publish' },
+                              { label: 'Favoris', val: '#favorites' },
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => updateSlide(idx, { ctaUrl: preset.val })}
+                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-blue-100 text-[10px] rounded font-semibold text-slate-700"
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-slate-600 font-bold mb-1 block">
+                            Image / Logo pub (URL ou fichier)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="https://... ou téléverser"
+                              value={slide.imageUrl || ''}
+                              onChange={(e) => updateSlide(idx, { imageUrl: e.target.value })}
+                              className="flex-1 px-3 py-2 border border-slate-300 rounded-xl min-w-0"
+                            />
+                            <label className="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl cursor-pointer font-bold flex items-center gap-1 shrink-0">
+                              <Upload className="w-3.5 h-3.5 text-blue-700" />
+                              <span>Photo</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleUploadBannerImage(idx, file);
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                            {slide.imageUrl && (
+                              <button
+                                type="button"
+                                onClick={() => updateSlide(idx, { imageUrl: undefined })}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                title="Retirer l'image"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* TAB 8: SETTINGS & SECTION 22 CHOICES (Section 7.9 & 22) */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div>

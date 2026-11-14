@@ -1,4 +1,4 @@
-import type { Category, City, Listing, PlatformSettings, Transaction, UserProfile, Report } from '../types/index.ts';
+import type { Category, City, Listing, PlatformSettings, PromoBannerSlide, Transaction, UserProfile, Report } from '../types/index.ts';
 
 export const INITIAL_CITIES: City[] = [
   {
@@ -673,6 +673,39 @@ export const INITIAL_REPORTS: Report[] = [
   }
 ];
 
+export const INITIAL_PROMO_BANNERS: PromoBannerSlide[] = [
+  {
+    id: 'pub_1',
+    badge: 'OFFRE FLASH',
+    title: 'Livraison Express 24h à Divo, Lakota, Gagnoa & Guitry',
+    subtitle: 'Commandez en toute confiance auprès de vendeurs vérifiés près de chez vous.',
+    ctaLabel: 'Découvrir les offres',
+    ctaUrl: '#listings',
+    theme: 'royal',
+    active: true,
+  },
+  {
+    id: 'pub_2',
+    badge: 'VENDEURS PRO',
+    title: 'Boostez votre boutique locale sur DJIBOUA MARKET !',
+    subtitle: 'Publiez vos articles en moins de 2 minutes et recevez des appels & WhatsApp directs.',
+    ctaLabel: 'Publier une annonce',
+    ctaUrl: '#publish',
+    theme: 'gold',
+    active: true,
+  },
+  {
+    id: 'pub_3',
+    badge: 'PAIEMENT SÉCURISÉ',
+    title: 'Wave, Orange Money, MTN MoMo & Moov Money acceptés',
+    subtitle: 'Transactions protégées et suivi instantané dans votre espace personnel.',
+    ctaLabel: 'Explorer le marché',
+    ctaUrl: '#listings',
+    theme: 'emerald',
+    active: true,
+  },
+];
+
 export const INITIAL_SETTINGS: PlatformSettings = {
   siteName: 'DJIBOUA MARKET',
   tagline: 'La marketplace de proximité : achetez, vendez et trouvez près de chez vous.',
@@ -686,4 +719,5 @@ export const INITIAL_SETTINGS: PlatformSettings = {
   commissionRate: 2.5, // 2.5% on electronic payments
   minListingPrice: 500,
   maxPhotosPerListing: 5,
+  promoBanners: INITIAL_PROMO_BANNERS,
 };
