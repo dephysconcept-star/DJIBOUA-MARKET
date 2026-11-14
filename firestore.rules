@@ -1,0 +1,558 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Global Hardened Helpers
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Query-safe admin check (no DB reads inside allow list blocks)
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'federationopareko@gmail.com';
+    }
+
+    // Full admin check for single-document get & write operations
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints (Anti-Update-Gap)
+    // =========================================================================
+
+    function isValidCity(data) {
+      return data.keys().hasAll(['id', 'name', 'region', 'neighborhoods', 'active']) &&
+        data.keys().hasOnly(['id', 'name', 'region', 'neighborhoods', 'active']) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.region is string && data.region.size() >= 2 && data.region.size() <= 100 &&
+        data.neighborhoods is list && data.neighborhoods.size() >= 1 && data.neighborhoods.size() <= 100 &&
+        data.neighborhoods[0] is string && data.neighborhoods[0].size() <= 120 &&
+        data.active is bool;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['id', 'name', 'iconName', 'slug', 'description', 'active']) &&
+        data.keys().hasOnly(['id', 'name', 'iconName', 'slug', 'description', 'active']) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+        data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 50 &&
+        data.slug is string && data.slug.size() >= 2 && data.slug.size() <= 100 &&
+        data.description is string && data.description.size() <= 300 &&
+        data.active is bool;
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll([
+          'siteName', 'tagline', 'symbol', 'contactPhone', 'contactWhatsApp',
+          'contactEmail', 'autoApproveListings', 'deliveryMode', 'commissionRate',
+          'minListingPrice', 'maxPhotosPerListing', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'siteName', 'tagline', 'symbol', 'contactPhone', 'contactWhatsApp',
+          'contactEmail', 'autoApproveListings', 'deliveryMode', 'commissionRate',
+          'minListingPrice', 'maxPhotosPerListing', 'updatedAt'
+        ]) &&
+        data.siteName is string && data.siteName.size() >= 2 && data.siteName.size() <= 100 &&
+        data.tagline is string && data.tagline.size() <= 250 &&
+        data.symbol is string && data.symbol.size() <= 50 &&
+        data.contactPhone is string && data.contactPhone.size() <= 40 &&
+        data.contactWhatsApp is string && data.contactWhatsApp.size() <= 40 &&
+        data.contactEmail is string && data.contactEmail.size() <= 120 &&
+        data.autoApproveListings is bool &&
+        data.deliveryMode in ['both', 'direct_only', 'lokoda_only'] &&
+        data.commissionRate is number && data.commissionRate >= 0 && data.commissionRate <= 50 &&
+        data.minListingPrice is number && data.minListingPrice >= 0 && data.minListingPrice <= 10000000 &&
+        data.maxPhotosPerListing is number && data.maxPhotosPerListing >= 1 && data.maxPhotosPerListing <= 10 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPublicUser(data) {
+      return data.keys().hasAll(['id', 'name', 'role', 'city', 'neighborhood', 'avatarUrl', 'registeredAt', 'status']) &&
+        data.keys().hasOnly(['id', 'name', 'businessName', 'role', 'city', 'neighborhood', 'avatarUrl', 'bio', 'registeredAt', 'status', 'rating']) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+        (!('businessName' in data) || (data.businessName is string && data.businessName.size() <= 140)) &&
+        data.role in ['buyer', 'seller', 'admin'] &&
+        data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
+        data.neighborhood is string && data.neighborhood.size() >= 1 && data.neighborhood.size() <= 120 &&
+        data.avatarUrl is string && data.avatarUrl.size() <= 60000 &&
+        (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
+        data.registeredAt is timestamp &&
+        data.status in ['active', 'suspended', 'blocked'] &&
+        (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5));
+    }
+
+    function isValidPrivateUserInfo(data) {
+      return data.keys().hasAll(['userId', 'email', 'phone', 'whatsapp', 'updatedAt']) &&
+        data.keys().hasOnly(['userId', 'email', 'phone', 'whatsapp', 'updatedAt']) &&
+        isValidId(data.userId) &&
+        data.email is string && data.email.size() <= 160 &&
+        data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 40 &&
+        data.whatsapp is string && data.whatsapp.size() >= 6 && data.whatsapp.size() <= 40 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['userId', 'listingId', 'createdAt']) &&
+        data.keys().hasOnly(['userId', 'listingId', 'createdAt']) &&
+        isValidId(data.userId) &&
+        isValidId(data.listingId) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidListing(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'price', 'description', 'categoryId', 'condition', 'status',
+          'photos', 'sellerId', 'sellerName', 'sellerPhone', 'sellerWhatsApp',
+          'city', 'neighborhood', 'createdAt', 'updatedAt',
+          'viewsCount', 'callClicksCount', 'whatsappClicksCount'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'price', 'description', 'categoryId', 'condition', 'status',
+          'rejectionReason', 'photos', 'sellerId', 'sellerName', 'sellerBusinessName',
+          'sellerPhone', 'sellerWhatsApp', 'sellerAvatar', 'sellerRating', 'sellerVerified',
+          'city', 'neighborhood', 'addressDetails', 'createdAt', 'updatedAt',
+          'viewsCount', 'callClicksCount', 'whatsappClicksCount', 'featured', 'popular'
+        ]) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 3 && data.title.size() <= 180 &&
+        data.price is number && data.price >= 0 && data.price <= 1000000000 &&
+        data.description is string && data.description.size() >= 5 && data.description.size() <= 4000 &&
+        isValidId(data.categoryId) &&
+        data.condition in ['neuf', 'occasion'] &&
+        data.status in ['approved', 'pending', 'rejected', 'suspended'] &&
+        (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+        data.photos is list && data.photos.size() >= 1 && data.photos.size() <= 5 &&
+        data.photos[0] is string && data.photos[0].size() <= 150000 &&
+        isValidId(data.sellerId) &&
+        data.sellerName is string && data.sellerName.size() >= 2 && data.sellerName.size() <= 120 &&
+        (!('sellerBusinessName' in data) || (data.sellerBusinessName is string && data.sellerBusinessName.size() <= 140)) &&
+        data.sellerPhone is string && data.sellerPhone.size() >= 6 && data.sellerPhone.size() <= 40 &&
+        data.sellerWhatsApp is string && data.sellerWhatsApp.size() >= 6 && data.sellerWhatsApp.size() <= 40 &&
+        (!('sellerAvatar' in data) || (data.sellerAvatar is string && data.sellerAvatar.size() <= 60000)) &&
+        (!('sellerRating' in data) || (data.sellerRating is number && data.sellerRating >= 0 && data.sellerRating <= 5)) &&
+        (!('sellerVerified' in data) || data.sellerVerified is bool) &&
+        data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
+        data.neighborhood is string && data.neighborhood.size() >= 1 && data.neighborhood.size() <= 120 &&
+        (!('addressDetails' in data) || (data.addressDetails is string && data.addressDetails.size() <= 300)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        data.viewsCount is number && data.viewsCount >= 0 &&
+        data.callClicksCount is number && data.callClicksCount >= 0 &&
+        data.whatsappClicksCount is number && data.whatsappClicksCount >= 0 &&
+        (!('featured' in data) || data.featured is bool) &&
+        (!('popular' in data) || data.popular is bool);
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll([
+          'id', 'reference', 'listingId', 'listingTitle', 'listingPhoto',
+          'amount', 'deliveryFee', 'totalAmount', 'buyerId', 'buyerName', 'buyerPhone',
+          'buyerCity', 'buyerNeighborhood', 'sellerId', 'sellerName', 'sellerPhone',
+          'sellerCity', 'method', 'status', 'deliveryOption', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'reference', 'listingId', 'listingTitle', 'listingPhoto',
+          'amount', 'deliveryFee', 'totalAmount', 'buyerId', 'buyerName', 'buyerPhone',
+          'buyerWhatsApp', 'buyerEmail', 'buyerCity', 'buyerNeighborhood', 'sellerId',
+          'sellerName', 'sellerPhone', 'sellerCity', 'method', 'status', 'deliveryOption',
+          'createdAt', 'paidAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.reference is string && data.reference.size() >= 4 && data.reference.size() <= 64 &&
+        isValidId(data.listingId) &&
+        data.listingTitle is string && data.listingTitle.size() >= 2 && data.listingTitle.size() <= 180 &&
+        data.listingPhoto is string && data.listingPhoto.size() <= 150000 &&
+        data.amount is number && data.amount >= 0 &&
+        data.deliveryFee is number && data.deliveryFee >= 0 &&
+        data.totalAmount is number && data.totalAmount >= 0 &&
+        isValidId(data.buyerId) &&
+        data.buyerName is string && data.buyerName.size() >= 2 && data.buyerName.size() <= 120 &&
+        data.buyerPhone is string && data.buyerPhone.size() >= 6 && data.buyerPhone.size() <= 40 &&
+        (!('buyerWhatsApp' in data) || (data.buyerWhatsApp is string && data.buyerWhatsApp.size() <= 40)) &&
+        (!('buyerEmail' in data) || (data.buyerEmail is string && data.buyerEmail.size() <= 160)) &&
+        data.buyerCity is string && data.buyerCity.size() >= 2 && data.buyerCity.size() <= 80 &&
+        data.buyerNeighborhood is string && data.buyerNeighborhood.size() >= 1 && data.buyerNeighborhood.size() <= 120 &&
+        isValidId(data.sellerId) &&
+        data.sellerName is string && data.sellerName.size() >= 2 && data.sellerName.size() <= 120 &&
+        data.sellerPhone is string && data.sellerPhone.size() >= 6 && data.sellerPhone.size() <= 40 &&
+        data.sellerCity is string && data.sellerCity.size() >= 2 && data.sellerCity.size() <= 80 &&
+        data.method in ['wave', 'orange_money', 'mtn_momo', 'moov_money', 'cinetpay', 'cash_on_delivery'] &&
+        data.status in ['initiated', 'pending', 'paid', 'failed', 'refunded'] &&
+        data.deliveryOption in ['direct', 'lokoda_express'] &&
+        data.createdAt is timestamp &&
+        (!('paidAt' in data) || data.paidAt is timestamp);
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll([
+          'id', 'listingId', 'listingTitle', 'sellerName', 'reporterId',
+          'reason', 'comment', 'status', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'listingId', 'listingTitle', 'sellerName', 'reporterId',
+          'reason', 'comment', 'reporterContact', 'status', 'createdAt', 'resolvedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.listingId) &&
+        data.listingTitle is string && data.listingTitle.size() >= 2 && data.listingTitle.size() <= 180 &&
+        data.sellerName is string && data.sellerName.size() >= 2 && data.sellerName.size() <= 120 &&
+        isValidId(data.reporterId) &&
+        data.reason in ['arnaque', 'faux_produit', 'mauvaise_description', 'produit_interdit', 'prix_trompeur', 'contenu_inapproprie', 'vendeur_suspect'] &&
+        data.comment is string && data.comment.size() >= 3 && data.comment.size() <= 1500 &&
+        (!('reporterContact' in data) || (data.reporterContact is string && data.reporterContact.size() <= 120)) &&
+        data.status in ['pending', 'reviewed', 'action_taken', 'dismissed'] &&
+        data.createdAt is timestamp &&
+        (!('resolvedAt' in data) || data.resolvedAt is timestamp);
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 150 &&
+        data.message is string && data.message.size() >= 2 && data.message.size() <= 600 &&
+        data.type in ['approval', 'rejection', 'transaction', 'system'] &&
+        data.read is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminLog(data) {
+      return data.keys().hasAll(['id', 'action', 'targetType', 'targetId', 'performedBy', 'adminId', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'action', 'targetType', 'targetId', 'performedBy', 'adminId', 'timestamp', 'details']) &&
+        isValidId(data.id) &&
+        data.action is string && data.action.size() >= 2 && data.action.size() <= 180 &&
+        data.targetType in ['listing', 'user', 'category', 'city', 'setting', 'payment'] &&
+        isValidId(data.targetId) &&
+        data.performedBy is string && data.performedBy.size() <= 120 &&
+        isValidId(data.adminId) &&
+        data.timestamp is timestamp &&
+        (!('details' in data) || (data.details is string && data.details.size() <= 500));
+    }
+
+    // =========================================================================
+    // Collection Match Blocks
+    // =========================================================================
+
+    // Health check document for boot validation
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Cities
+    match /cities/{cityId} {
+      allow get: if isValidId(cityId);
+      allow list: if resource.data.active == true || isBootstrappedAdmin();
+      allow create: if isValidId(cityId) && isAdmin() && isValidCity(incoming()) && incoming().id == cityId;
+      allow update: if isValidId(cityId) && isAdmin() && isValidCity(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'region', 'neighborhoods', 'active']);
+      allow delete: if isValidId(cityId) && isAdmin();
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId);
+      allow list: if resource.data.active == true || isBootstrappedAdmin();
+      allow create: if isValidId(categoryId) && isAdmin() && isValidCategory(incoming()) && incoming().id == categoryId;
+      allow update: if isValidId(categoryId) && isAdmin() && isValidCategory(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'iconName', 'slug', 'description', 'active']);
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // Platform Settings
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && settingId == 'general';
+      allow list: if false;
+      allow create: if isValidId(settingId) && settingId == 'general' && isAdmin() &&
+        isValidSettings(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidId(settingId) && settingId == 'general' && isAdmin() &&
+        isValidSettings(incoming()) && incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'siteName', 'tagline', 'symbol', 'contactPhone', 'contactWhatsApp',
+          'contactEmail', 'autoApproveListings', 'deliveryMode', 'commissionRate',
+          'minListingPrice', 'maxPhotosPerListing', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Public User Profiles (NO PII) + Split Private PII + Favorites
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (resource.data.role == 'seller' || isOwner(userId) || isAdmin());
+      allow list: if resource.data.role == 'seller' || isBootstrappedAdmin();
+      allow create: if isValidId(userId) && isVerifiedUser() && isValidPublicUser(incoming()) && (
+        (
+          isOwner(userId) &&
+          incoming().id == request.auth.uid &&
+          incoming().role in ['buyer', 'seller'] &&
+          incoming().status == 'active' &&
+          incoming().registeredAt == request.time
+        ) || (
+          isAdmin() &&
+          incoming().id == userId &&
+          incoming().registeredAt == request.time
+        )
+      );
+      allow update: if isValidId(userId) && isVerifiedUser() && isValidPublicUser(incoming()) && (
+        (
+          isOwner(userId) &&
+          existing().status == 'active' &&
+          incoming().id == existing().id &&
+          incoming().role == existing().role &&
+          incoming().status == existing().status &&
+          incoming().registeredAt == existing().registeredAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'businessName', 'city', 'neighborhood', 'avatarUrl', 'bio'])
+        ) || (
+          isAdmin() &&
+          incoming().id == existing().id &&
+          incoming().registeredAt == existing().registeredAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'role', 'name', 'businessName', 'city', 'neighborhood', 'avatarUrl', 'bio', 'rating'])
+        )
+      );
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // Isolated Private PII
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isValidId(userId) && isValidId(docId) && docId == 'info' &&
+          isVerifiedUser() && isValidPrivateUserInfo(incoming()) && (
+            (isOwner(userId) && incoming().userId == request.auth.uid && incoming().updatedAt == request.time) ||
+            (isAdmin() && incoming().userId == userId && incoming().updatedAt == request.time)
+          );
+        allow update: if isValidId(userId) && isValidId(docId) && docId == 'info' &&
+          isVerifiedUser() && isValidPrivateUserInfo(incoming()) &&
+          incoming().userId == existing().userId &&
+          incoming().updatedAt == request.time &&
+          (isOwner(userId) || isAdmin()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['email', 'phone', 'whatsapp', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(docId) && isAdmin();
+      }
+
+      // User Favorites
+      match /favorites/{listingId} {
+        allow get: if isValidId(userId) && isValidId(listingId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isBootstrappedAdmin();
+        allow create: if isValidId(userId) && isValidId(listingId) && isVerifiedUser() &&
+          isOwner(userId) && isValidFavorite(incoming()) &&
+          incoming().userId == request.auth.uid &&
+          incoming().listingId == listingId &&
+          incoming().createdAt == request.time &&
+          (
+            exists(/databases/$(database)/documents/listings/$(listingId)) ||
+            existsAfter(/databases/$(database)/documents/listings/$(listingId))
+          );
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(listingId) && isVerifiedUser() && (isOwner(userId) || isAdmin());
+      }
+    }
+
+    // Marketplace Listings
+    match /listings/{listingId} {
+      allow get: if isValidId(listingId) && (
+        resource.data.status == 'approved' ||
+        (isSignedIn() && resource.data.sellerId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if resource.data.status == 'approved' ||
+        (isSignedIn() && resource.data.sellerId == request.auth.uid) ||
+        isBootstrappedAdmin();
+
+      allow create: if isValidId(listingId) && isVerifiedUser() && isValidListing(incoming()) &&
+        incoming().id == listingId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          (
+            incoming().sellerId == request.auth.uid &&
+            incoming().viewsCount == 0 &&
+            incoming().callClicksCount == 0 &&
+            incoming().whatsappClicksCount == 0 &&
+            (
+              incoming().status == 'pending' ||
+              (
+                incoming().status == 'approved' &&
+                exists(/databases/$(database)/documents/settings/general) &&
+                get(/databases/$(database)/documents/settings/general).data.autoApproveListings == true
+              )
+            )
+          ) || isAdmin()
+        );
+
+      allow update: if isValidId(listingId) && isVerifiedUser() && isValidListing(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().sellerId == existing().sellerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Tier 1: Admin moderation & verification override
+          (
+            isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'rejectionReason', 'featured', 'popular', 'sellerVerified', 'updatedAt'])
+          ) ||
+          // Tier 2: Owner updates listing details (blocked if terminal suspended state)
+          (
+            existing().sellerId == request.auth.uid &&
+            existing().status != 'suspended' &&
+            incoming().status == existing().status &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'price', 'description', 'categoryId', 'condition', 'photos',
+              'city', 'neighborhood', 'addressDetails', 'sellerName', 'sellerBusinessName',
+              'sellerPhone', 'sellerWhatsApp', 'sellerAvatar', 'updatedAt'
+            ])
+          ) ||
+          // Tier 3: Authenticated viewer/buyer increments view/call/whatsapp metric by +1
+          (
+            existing().status == 'approved' && (
+              (incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount', 'updatedAt']) && incoming().viewsCount == existing().viewsCount + 1) ||
+              (incoming().diff(existing()).affectedKeys().hasOnly(['callClicksCount', 'updatedAt']) && incoming().callClicksCount == existing().callClicksCount + 1) ||
+              (incoming().diff(existing()).affectedKeys().hasOnly(['whatsappClicksCount', 'updatedAt']) && incoming().whatsappClicksCount == existing().whatsappClicksCount + 1)
+            )
+          )
+        );
+
+      allow delete: if isValidId(listingId) && isVerifiedUser() && (
+        existing().sellerId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Transactions & Mobile Money Checkout
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && isSignedIn() && (
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isBootstrappedAdmin()
+      );
+      allow create: if isValidId(transactionId) && isVerifiedUser() && isValidTransaction(incoming()) &&
+        incoming().id == transactionId &&
+        incoming().createdAt == request.time &&
+        (!('paidAt' in incoming()) || incoming().paidAt == request.time) &&
+        (
+          exists(/databases/$(database)/documents/listings/$(incoming().listingId)) ||
+          existsAfter(/databases/$(database)/documents/listings/$(incoming().listingId))
+        ) && (
+          (incoming().buyerId == request.auth.uid && incoming().status in ['initiated', 'pending', 'paid']) ||
+          isAdmin()
+        );
+      allow update: if isValidId(transactionId) && isVerifiedUser() && isValidTransaction(incoming()) &&
+        isAdmin() &&
+        existing().status != 'refunded' &&
+        incoming().id == existing().id &&
+        incoming().buyerId == existing().buyerId &&
+        incoming().sellerId == existing().sellerId &&
+        incoming().createdAt == existing().createdAt &&
+        (!('paidAt' in incoming()) || incoming().paidAt == request.time || !('paidAt' in incoming().diff(existing()).affectedKeys())) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paidAt']);
+      allow delete: if false;
+    }
+
+    // Abuse & Fraud Reports
+    match /reports/{reportId} {
+      allow get: if isValidId(reportId) && isSignedIn() && (
+        resource.data.reporterId == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.reporterId == request.auth.uid || isBootstrappedAdmin()
+      );
+      allow create: if isValidId(reportId) && isVerifiedUser() && isValidReport(incoming()) &&
+        incoming().id == reportId &&
+        incoming().createdAt == request.time &&
+        (
+          exists(/databases/$(database)/documents/listings/$(incoming().listingId)) ||
+          existsAfter(/databases/$(database)/documents/listings/$(incoming().listingId))
+        ) && (
+          (incoming().reporterId == request.auth.uid && incoming().status == 'pending') ||
+          isAdmin()
+        );
+      allow update: if isValidId(reportId) && isVerifiedUser() && isValidReport(incoming()) &&
+        isAdmin() &&
+        existing().status == 'pending' &&
+        incoming().id == existing().id &&
+        incoming().reporterId == existing().reporterId &&
+        incoming().listingId == existing().listingId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().resolvedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedAt']);
+      allow delete: if isValidId(reportId) && isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isSignedIn() && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || isBootstrappedAdmin()
+      );
+      allow create: if isValidId(notificationId) && isVerifiedUser() && isValidNotification(incoming()) &&
+        incoming().id == notificationId &&
+        incoming().createdAt == request.time &&
+        (incoming().userId == request.auth.uid || isAdmin());
+      allow update: if isValidId(notificationId) && isVerifiedUser() && isValidNotification(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt && (
+          (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read'])) ||
+          isAdmin()
+        );
+      allow delete: if isValidId(notificationId) && isVerifiedUser() && (
+        existing().userId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Admin Audit Logs (Append-only by Admin, Immutable)
+    match /admin_logs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(logId) && isAdmin() && isValidAdminLog(incoming()) &&
+        incoming().id == logId &&
+        incoming().adminId == request.auth.uid &&
+        incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
+
+    // Trusted Admin Registry (Read-only for clients)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create, update, delete: if false;
+    }
+  }
+}

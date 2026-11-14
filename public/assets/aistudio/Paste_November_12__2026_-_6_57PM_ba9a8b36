@@ -1,0 +1,711 @@
+CAHIER DES CHARGES FONCTIONNEL ET TECHNIQUE
+LOKODA MARKET
+La marketplace de proximité : achetez, vendez et trouvez près de chez vous.
+Site web
+Application Android
+E-commerce
+Administration privée
+Ce cahier des charges définit les objectifs, les fonctionnalités, les règles de gestion, l'architecture technique, la sécurité et les conditions de livraison de LOKODA MARKET.
+Le projet consiste à développer une plateforme commerciale inspirée du principe de GOHZO MARKET, avec une identité indépendante, une gestion centralisée et des fonctionnalités adaptées aux réalités commerciales de Divo, Lakota et Gagnoa.
+Les trois villes constituent la zone initiale de lancement.
+CAHIER DES CHARGES COMPLET
+APPLICATION LOKODA MARKET
+Nom du projet : LOKODA MARKET
+Symbole : Éléphant
+Secteur : Commerce, petites annonces et marketplace
+Pays de lancement : Côte d'Ivoire
+Zones initiales : Divo, Lakota et Gagnoa
+Supports : Site web responsive et application Android
+Langue principale : Français
+Devise : Franc CFA (FCFA)
+Nature du projet : Marketplace multi-vendeurs.
+
+1. PRÉSENTATION GÉNÉRALE DU PROJET
+1.1. Contexte
+LOKODA MARKET est une plateforme numérique destinée à faciliter les échanges commerciaux entre les vendeurs et les acheteurs.
+Elle permettra aux commerçants, entrepreneurs, particuliers et prestataires de services de publier leurs produits ou services afin de les rendre accessibles aux personnes recherchant des offres dans leur environnement géographique.
+La plateforme doit favoriser le commerce de proximité et permettre aux habitants de Divo, Lakota et Gagnoa de trouver facilement des produits disponibles dans leur ville, leur quartier ou leur village.
+1.2. Objectif général
+Développer une marketplace moderne, sécurisée et accessible permettant :
+•	Aux vendeurs de publier leurs annonces.
+•	Aux acheteurs de rechercher des produits et services.
+•	Aux utilisateurs de contacter directement les vendeurs.
+•	Aux acheteurs de localiser les vendeurs.
+•	Aux vendeurs et acheteurs de communiquer par téléphone ou WhatsApp.
+•	Aux administrateurs de contrôler et gérer l'ensemble de la plateforme.
+•	Aux utilisateurs d'effectuer des paiements directs ou électroniques lorsque cette fonctionnalité est disponible.
+1.3. Objectifs spécifiques
+1.	Digitaliser le commerce de proximité.
+2.	Faciliter la vente et l'achat de produits.
+3.	Donner de la visibilité aux commerçants locaux.
+4.	Permettre aux particuliers de vendre leurs biens.
+5.	Faciliter la recherche de produits par ville et quartier.
+6.	Créer une communauté commerciale numérique.
+7.	Mettre à disposition des outils de gestion et de statistiques.
+8.	Permettre une extension future à d'autres villes et régions.
+2. IDENTITÉ VISUELLE ET CHARTE GRAPHIQUE
+2.1. Nom et symbole
+Nom officiel : LOKODA MARKET
+Symbole principal : un éléphant représentant la force, la confiance, la stabilité et la fiabilité.
+Le logo devra associer :
+•	Une représentation graphique professionnelle d'un éléphant.
+•	Le texte LOKODA MARKET.
+•	Une identité visuelle facilement reconnaissable.
+•	Une déclinaison utilisable sur le site web, Android, les documents et les supports publicitaires.
+2.2. Couleurs officielles
+Couleur	Utilisation
+Bleu roi	Navigation, boutons principaux, en-têtes
+Jaune or	Logo, prix, boutons secondaires, accents
+Blanc	Fond, espaces de lecture, cartes
+Gris clair	Séparateurs, arrière-plans secondaires
+Le design devra être moderne, épuré, professionnel et facile à utiliser.
+2.3. Expérience utilisateur
+L'application devra :
+•	Être simple à comprendre.
+•	Être rapide même avec une connexion Internet limitée.
+•	Afficher clairement les prix.
+•	Mettre les photos des produits en valeur.
+•	Faciliter les contacts entre vendeurs et acheteurs.
+•	Être adaptée aux petits écrans Android.
+3. ZONE GÉOGRAPHIQUE ET LOCALISATION
+3.1. Zones de lancement
+La première version de LOKODA MARKET sera limitée aux trois zones suivantes :
+1.	Divo.
+2.	Lakota.
+3.	Gagnoa.
+L'architecture devra permettre d'ajouter ultérieurement d'autres villes sans reconstruire l'application.
+3.2. Système de localisation
+Chaque annonce devra comporter obligatoirement :
+•	Pays.
+•	Ville.
+•	Quartier ou village.
+•	Informations complémentaires de localisation, facultatives.
+Les utilisateurs pourront choisir leur ville dans une liste déroulante.
+Les quartiers et villages seront enregistrés dans la base de données et pourront être enrichis progressivement par l'administrateur.
+3.3. Recherche géographique
+Les acheteurs pourront :
+•	Afficher les produits de Divo.
+•	Afficher les produits de Lakota.
+•	Afficher les produits de Gagnoa.
+•	Filtrer par quartier.
+•	Filtrer par village.
+•	Afficher toutes les annonces des trois villes.
+•	Rechercher un produit dans une ville précise.
+La localisation exacte du domicile d'un vendeur ne devra jamais être publiée automatiquement.
+4. LES DIFFÉRENTS TYPES D'UTILISATEURS
+La plateforme comportera quatre profils principaux.
+4.1. Visiteur
+Le visiteur est une personne qui consulte la plateforme sans créer de compte.
+Il pourra :
+•	Accéder à la page d'accueil.
+•	Voir les catégories.
+•	Consulter les annonces approuvées.
+•	Rechercher un produit.
+•	Filtrer les annonces par ville.
+•	Consulter les détails des produits.
+•	Voir la localisation commerciale du vendeur.
+•	Appeler le vendeur.
+•	Contacter le vendeur par WhatsApp.
+La consultation et le contact avec un vendeur ne devront pas obligatoirement nécessiter une inscription.
+4.2. Acheteur
+L'acheteur pourra :
+•	Créer un compte.
+•	Se connecter.
+•	Modifier son profil.
+•	Ajouter des annonces aux favoris.
+•	Consulter ses favoris.
+•	Consulter son historique de transactions si le paiement intégré est utilisé.
+•	Contacter les vendeurs.
+•	Signaler une annonce.
+•	Recevoir des notifications.
+•	Gérer son compte.
+4.3. Vendeur
+Un vendeur pourra également être un acheteur.
+Il disposera d'un espace personnel lui permettant de :
+•	Créer son profil vendeur.
+•	Ajouter son nom commercial.
+•	Ajouter une photo ou un logo.
+•	Ajouter son numéro de téléphone.
+•	Ajouter son numéro WhatsApp.
+•	Choisir sa ville.
+•	Indiquer son quartier ou village.
+•	Publier des annonces.
+•	Ajouter plusieurs photos à une annonce.
+•	Modifier ses publications.
+•	Supprimer ses annonces.
+•	Consulter le statut de ses publications.
+•	Consulter ses statistiques.
+•	Gérer ses coordonnées.
+•	Consulter ses éventuelles transactions.
+4.4. Super administrateur
+Le Super administrateur dispose de l'ensemble des droits sur la plateforme.
+Il pourra gérer :
+•	Les utilisateurs.
+•	Les vendeurs.
+•	Les acheteurs.
+•	Les annonces.
+•	Les catégories.
+•	Les signalements.
+•	Les paiements.
+•	Les paramètres.
+•	Les statistiques.
+•	Les notifications.
+•	Les contenus publics.
+•	Les droits et permissions.
+5. FONCTIONNALITÉS DU SITE WEB ET DE L'APPLICATION ANDROID
+Les deux supports devront partager la même base de données et les mêmes règles de fonctionnement.
+5.1. Page d'accueil
+La page d'accueil devra comporter :
+1.	Logo LOKODA MARKET.
+2.	Barre de recherche.
+3.	Sélecteur de ville.
+4.	Menu des catégories.
+5.	Section des produits récents.
+6.	Section des produits populaires.
+7.	Section des annonces recommandées.
+8.	Section des vendeurs.
+9.	Bouton de publication d'annonce.
+10.	Section de présentation de la plateforme.
+11.	Pied de page avec les informations légales et les contacts.
+5.2. Barre de recherche
+La recherche devra permettre de retrouver un produit à partir de :
+•	Son nom.
+•	Son titre.
+•	Sa description.
+•	Sa catégorie.
+•	Sa ville.
+•	Son quartier ou village.
+Prévoir une recherche avec suggestions automatiques et une gestion des résultats sans correspondance.
+5.3. Catégories de produits
+Créer les catégories suivantes :
+1.	Téléphones et tablettes.
+2.	Informatique et accessoires.
+3.	Télévisions et multimédia.
+4.	Électroménager.
+5.	Maison et meubles.
+6.	Vêtements.
+7.	Chaussures.
+8.	Beauté et soins.
+9.	Agriculture et élevage.
+10.	Véhicules et motos.
+11.	Pièces détachées.
+12.	Immobilier.
+13.	Matériaux de construction.
+14.	Alimentation et produits agricoles.
+15.	Services et prestations.
+16.	Équipements professionnels.
+17.	Loisirs et divertissements.
+18.	Autres produits.
+L'administrateur pourra ajouter, modifier, désactiver et supprimer les catégories selon les règles de gestion.
+5.4. Fiche détaillée d'une annonce
+Chaque annonce devra contenir :
+•	Une ou plusieurs photos.
+•	Le titre.
+•	Le prix en FCFA.
+•	La description.
+•	La catégorie.
+•	L'état du produit : neuf ou occasion.
+•	La date de publication.
+•	Le nom du vendeur.
+•	Le numéro de téléphone.
+•	Le numéro WhatsApp.
+•	La ville.
+•	Le quartier ou village.
+•	Le statut de l'annonce.
+Les informations de contact devront être affichées clairement.
+5.5. Contact direct du vendeur
+Deux moyens de contact obligatoires devront être disponibles.
+A. Appel téléphonique
+Un bouton « Appeler le vendeur » ouvrira directement le composeur téléphonique du téléphone avec le numéro du vendeur.
+B. WhatsApp
+Un bouton « Contacter sur WhatsApp » ouvrira WhatsApp avec le numéro du vendeur et un message prérempli.
+Exemple :
+« Bonjour, je viens de voir votre annonce sur LOKODA MARKET. Je suis intéressé(e) par votre produit. Est-il toujours disponible ? »
+Les boutons devront fonctionner sur Android et sur les navigateurs compatibles.
+5.6. Publication des annonces
+Le formulaire de publication comportera :
+•	Titre du produit.
+•	Catégorie.
+•	Description.
+•	Prix.
+•	État du produit.
+•	Photos.
+•	Numéro de téléphone.
+•	Numéro WhatsApp.
+•	Ville.
+•	Quartier ou village.
+L'utilisateur devra pouvoir prévisualiser son annonce avant de l'envoyer.
+Le système devra limiter les fichiers trop volumineux, vérifier les formats d'image et optimiser les photos pour accélérer le chargement.
+5.7. Gestion des annonces par le vendeur
+L'espace vendeur comportera quatre sections :
+•	Toutes mes annonces.
+•	Annonces en attente.
+•	Annonces approuvées.
+•	Annonces refusées ou suspendues.
+Le vendeur pourra modifier ou supprimer ses publications.
+Toute modification importante d'une annonce approuvée pourra déclencher une nouvelle vérification avant sa remise en ligne.
+5.8. Favoris
+L'acheteur pourra enregistrer des produits dans ses favoris afin de les retrouver facilement.
+Il pourra :
+•	Ajouter un produit aux favoris.
+•	Retirer un produit des favoris.
+•	Consulter sa liste.
+•	Retrouver une annonce tant qu'elle reste disponible.
+5.9. Notifications
+Prévoir des notifications concernant :
+•	La confirmation d'inscription.
+•	La publication d'une annonce.
+•	L'approbation d'une annonce.
+•	Le refus d'une annonce.
+•	La suspension d'une annonce.
+•	Les changements de statut d'une transaction.
+•	Les informations importantes de la plateforme.
+Les notifications pourront être intégrées au site et à Android, avec notifications push pour les appareils compatibles.
+6. ESPACE VENDEUR
+Créer un tableau de bord vendeur contenant :
+•	Photo ou logo.
+•	Nom du vendeur.
+•	Coordonnées.
+•	Ville.
+•	Quartier ou village.
+•	Nombre d'annonces.
+•	Nombre d'annonces actives.
+•	Nombre d'annonces en attente.
+•	Nombre de consultations.
+•	Liste des publications.
+•	Bouton « Publier une annonce ».
+•	Bouton « Modifier mon profil ».
+Le vendeur devra pouvoir gérer ses annonces indépendamment des autres utilisateurs.
+7. ESPACE ADMINISTRATEUR PRIVÉ
+7.1. Confidentialité de l'administration
+La partie Administration devra être totalement invisible dans la navigation publique.
+Aucun bouton, lien ou menu Administration ne devra apparaître sur la page d'accueil ou dans les espaces utilisateurs.
+Route privée proposée :
+/gestion-privee
+La confidentialité devra être renforcée par une véritable protection serveur. La connaissance de l'adresse de la page ne devra jamais suffire à obtenir un accès.
+7.2. Identifiants administrateur
+Identifiant administratif demandé :
+Administration
+Le mot de passe initial sera configuré de manière sécurisée lors de l'installation.
+Il devra être stocké sous forme de hash sécurisé, et non directement dans le code source.
+L'administrateur devra pouvoir modifier son mot de passe.
+Comme le mot de passe initial a été communiqué dans une conversation, il devra être renouvelé avant la mise en production.
+7.3. Tableau de bord général
+Le tableau de bord devra afficher :
+•	Nombre total d'utilisateurs.
+•	Nombre total de vendeurs.
+•	Nombre total d'acheteurs.
+•	Nombre total d'annonces.
+•	Annonces approuvées.
+•	Annonces en attente.
+•	Annonces refusées.
+•	Annonces suspendues.
+•	Nombre de catégories.
+•	Nombre de transactions.
+•	Volume des paiements électroniques confirmés.
+Prévoir des graphiques journaliers, hebdomadaires, mensuels et annuels.
+7.4. Gestion des utilisateurs
+L'administrateur pourra :
+•	Afficher tous les comptes.
+•	Rechercher un utilisateur.
+•	Consulter son profil.
+•	Modifier les informations autorisées.
+•	Suspendre un compte.
+•	Réactiver un compte.
+•	Bloquer un utilisateur frauduleux.
+•	Consulter ses annonces.
+•	Consulter son historique d'activité.
+Les opérations sensibles devront être enregistrées dans un journal d'administration.
+7.5. Gestion des vendeurs
+L'administrateur pourra :
+•	Consulter les vendeurs.
+•	Rechercher un vendeur par nom.
+•	Rechercher par numéro.
+•	Filtrer par ville.
+•	Consulter leurs annonces.
+•	Suspendre un vendeur.
+•	Réactiver un vendeur.
+•	Contrôler les informations commerciales.
+7.6. Modération des annonces
+Prévoir les statuts suivants :
+•	En attente.
+•	Approuvée.
+•	Refusée.
+•	Suspendue.
+L'administrateur pourra :
+•	Consulter les nouvelles publications.
+•	Vérifier les photos.
+•	Vérifier les descriptions.
+•	Contrôler les prix.
+•	Approuver les annonces.
+•	Refuser les annonces non conformes.
+•	Suspendre les annonces suspectes.
+•	Supprimer les contenus interdits.
+7.7. Gestion des catégories
+L'administrateur pourra créer et organiser les catégories, les sous-catégories et les icônes associées.
+7.8. Gestion des signalements
+Un utilisateur pourra signaler une annonce pour :
+•	Arnaque présumée.
+•	Faux produit.
+•	Mauvaise description.
+•	Produit interdit.
+•	Prix trompeur.
+•	Contenu inapproprié.
+•	Vendeur suspect.
+L'administrateur disposera d'un espace de traitement des signalements.
+7.9. Gestion des paramètres
+L'administrateur pourra gérer :
+•	Nom de la plateforme.
+•	Logo.
+•	Couleurs.
+•	Coordonnées officielles.
+•	Catégories.
+•	Villes autorisées.
+•	Règles de publication.
+•	Conditions d'utilisation.
+•	Politique de confidentialité.
+•	Messages de notification.
+8. SYSTÈME DE PAIEMENT
+La plateforme devra proposer deux possibilités.
+8.1. Paiement direct entre acheteur et vendeur
+L'acheteur contacte directement le vendeur.
+Ils conviennent ensemble :
+•	Du prix final.
+•	Du mode de paiement.
+•	Du lieu de rencontre.
+•	Des modalités de livraison.
+LOKODA MARKET ne prélève pas automatiquement de commission sur ces échanges.
+La plateforme devra préciser que le paiement direct se fait sous la responsabilité des parties.
+8.2. Paiement électronique intégré
+Prévoir une architecture permettant d'intégrer un prestataire de paiement compatible avec la Côte d'Ivoire.
+Solutions à étudier :
+•	CinetPay.
+•	PayDunya.
+•	Autres prestataires agréés et compatibles.
+Les moyens de paiement dépendront des contrats et services effectivement proposés par le prestataire.
+Fonctionnement :
+1.	L'acheteur sélectionne un produit.
+2.	Il choisit le paiement électronique.
+3.	Le serveur crée une transaction.
+4.	Le prestataire affiche les moyens de paiement disponibles.
+5.	L'acheteur effectue son paiement.
+6.	Le prestataire transmet une confirmation sécurisée au serveur.
+7.	Le serveur vérifie la transaction.
+8.	Le statut est actualisé.
+9.	Une confirmation est envoyée aux parties.
+Les statuts seront :
+•	Initié.
+•	En attente.
+•	Payé.
+•	Échoué.
+•	Remboursé.
+Aucune transaction ne devra être considérée comme payée sur la seule base d'une réponse du navigateur.
+8.3. Gestion financière
+L'administrateur pourra consulter :
+•	Les transactions.
+•	Les montants.
+•	Les références.
+•	Les prestataires.
+•	Les statuts.
+•	Les dates.
+•	Les éventuels remboursements.
+Le système de commissions, les frais de service et les modalités de versement aux vendeurs devront être définis avant l'activation du paiement intégré.
+9. LIVRAISON ET COMMANDE
+Prévoir une gestion flexible de la livraison.
+Les possibilités envisagées sont :
+Option A : livraison organisée directement
+L'acheteur et le vendeur s'entendent sur le retrait ou la livraison.
+Option B : livraison par un réseau de livreurs LOKODA
+Une évolution permettra de gérer :
+•	Les livreurs.
+•	Les demandes de livraison.
+•	Les adresses ou points de rencontre.
+•	Les frais.
+•	Les statuts de livraison.
+•	Le suivi des commandes.
+Le choix définitif du modèle de livraison devra être validé avant le développement de cette partie.
+10. BASE DE DONNÉES
+La plateforme utilisera PostgreSQL.
+Tables principales :
+Table	Fonction
+profiles	Profils utilisateurs
+roles	Rôles et permissions
+categories	Catégories
+subcategories	Sous-catégories
+listings	Annonces
+product_images	Photos des produits
+favorites	Favoris
+locations	Villes, quartiers et villages
+reports	Signalements
+notifications	Notifications
+payments	Paiements
+orders	Commandes, si activées
+deliveries	Livraisons, si activées
+admin_logs	Journal administratif
+settings	Paramètres généraux
+Chaque utilisateur devra avoir un identifiant unique.
+Les annonces devront être reliées au vendeur qui les a publiées.
+Les paiements devront être associés aux transactions correspondantes.
+11. ARCHITECTURE TECHNIQUE
+11.1. Site web
+Technologie recommandée : Next.js avec React et TypeScript.
+Fonctions :
+•	Site responsive.
+•	Catalogue.
+•	Recherche.
+•	Fiches produits.
+•	Comptes utilisateurs.
+•	Espace vendeur.
+•	Espace administrateur.
+•	Paiements.
+•	API sécurisées.
+11.2. Application Android
+Technologie recommandée : React Native avec Expo.
+Fonctions :
+•	Accueil.
+•	Recherche.
+•	Catégories.
+•	Détails des annonces.
+•	Inscription.
+•	Connexion.
+•	Publication.
+•	Favoris.
+•	Appels.
+•	WhatsApp.
+•	Notifications.
+L'application Android devra utiliser la même base de données que le site.
+11.3. Backend
+Technologies recommandées :
+•	Supabase.
+•	PostgreSQL.
+•	API sécurisées.
+•	Supabase Auth.
+•	Supabase Storage.
+Le serveur devra gérer les authentifications, les permissions, les annonces, les paiements et les opérations administratives.
+11.4. Hébergement
+Solutions à envisager :
+•	Vercel pour le site Next.js.
+•	Supabase pour les données et l'authentification.
+•	Hébergement adapté pour les traitements serveur complémentaires.
+•	Google Play Console pour la publication Android.
+12. SÉCURITÉ ET PROTECTION DES DONNÉES
+Le système devra comporter :
+1.	Authentification sécurisée.
+2.	Hashage des mots de passe.
+3.	Protection des sessions.
+4.	Contrôle des rôles.
+5.	Protection des routes administratives.
+6.	Protection contre les injections SQL.
+7.	Protection contre XSS et CSRF.
+8.	Limitation des tentatives de connexion.
+9.	Validation des données.
+10.	Protection des images téléchargées.
+11.	Sauvegarde de la base de données.
+12.	Journalisation des opérations sensibles.
+13.	Procédure de récupération des comptes.
+14.	Gestion du consentement et des données personnelles.
+Les clés secrètes ne devront jamais être exposées dans le code public du site ou de l'application Android.
+Les données personnelles ne devront être accessibles qu'aux personnes autorisées.
+13. PERFORMANCES ET ACCESSIBILITÉ
+L'application devra :
+•	Être compatible avec les navigateurs modernes.
+•	Être utilisable sur les téléphones Android courants.
+•	S'adapter aux ordinateurs et tablettes.
+•	Optimiser les images.
+•	Limiter la consommation de données.
+•	Afficher un indicateur de chargement.
+•	Gérer les erreurs de connexion.
+•	Prévoir des messages clairs en cas d'absence de résultats.
+•	Être conçue pour évoluer avec l'augmentation du nombre d'utilisateurs.
+14. RÉFÉRENCEMENT ET COMMUNICATION
+Le site devra être optimisé pour les moteurs de recherche.
+Prévoir :
+•	Des titres et descriptions adaptés.
+•	Des URL lisibles.
+•	Des images optimisées.
+•	Des pages publiques indexables.
+•	Des liens de partage des annonces.
+•	Des aperçus de publication sur WhatsApp et les réseaux sociaux.
+•	Une page de présentation de LOKODA MARKET.
+Les pages privées et administratives ne devront pas être indexées.
+15. CONDITIONS D'UTILISATION ET RÈGLES COMMERCIALES
+Les utilisateurs devront accepter les conditions d'utilisation.
+La plateforme devra interdire :
+•	Les produits illégaux.
+•	Les produits contrefaits.
+•	Les annonces frauduleuses.
+•	Les fausses informations.
+•	Les contenus portant atteinte aux personnes.
+•	Les activités commerciales interdites par la réglementation applicable.
+LOKODA MARKET devra disposer :
+•	D'une politique de confidentialité.
+•	De conditions générales d'utilisation.
+•	D'une politique de modération.
+•	D'une procédure de signalement.
+•	D'une procédure de suppression de compte.
+16. STATISTIQUES ET RAPPORTS
+Le système administratif devra proposer des statistiques par période et par ville.
+Indicateurs :
+•	Inscriptions.
+•	Vendeurs actifs.
+•	Acheteurs actifs.
+•	Publications.
+•	Annonces approuvées.
+•	Annonces refusées.
+•	Consultations.
+•	Contacts téléphoniques et WhatsApp lorsque mesurables avec consentement.
+•	Transactions électroniques.
+•	Volume des paiements confirmés.
+Les rapports devront pouvoir être exportés en PDF ou Excel.
+17. LIVRABLES ATTENDUS
+Le prestataire ou l'équipe de développement devra fournir :
+1.	Le logo officiel LOKODA MARKET.
+2.	La charte graphique.
+3.	Les maquettes des interfaces.
+4.	Le site web complet.
+5.	L'application Android.
+6.	Le code source du frontend.
+7.	Le code source du backend.
+8.	La base de données.
+9.	Les API.
+10.	Le tableau de bord vendeur.
+11.	Le tableau de bord administrateur.
+12.	Le système de paiement intégré lorsqu'il est activé.
+13.	La documentation technique.
+14.	Les instructions d'installation.
+15.	Les identifiants de propriété et d'administration transmis de manière sécurisée.
+16.	Les procédures de sauvegarde.
+17.	Les tests fonctionnels.
+18.	Le fichier APK ou le paquet Android prêt pour la publication.
+19.	La version web mise en ligne.
+20.	La documentation utilisateur.
+Le code source et les comptes d'hébergement devront être remis au propriétaire du projet.
+18. PHASAGE DU DÉVELOPPEMENT
+Phase 1 : conception
+•	Définition de l'identité visuelle.
+•	Maquettes du site.
+•	Maquettes Android.
+•	Validation des parcours utilisateurs.
+•	Validation des règles commerciales.
+Phase 2 : développement de la base technique
+•	Création de la base de données.
+•	Création du backend.
+•	Authentification.
+•	Gestion des permissions.
+•	Gestion des utilisateurs.
+Phase 3 : développement de la marketplace
+•	Accueil.
+•	Catégories.
+•	Recherche.
+•	Annonces.
+•	Profils vendeurs.
+•	Localisation.
+•	Appels et WhatsApp.
+•	Favoris.
+Phase 4 : administration
+•	Tableau de bord.
+•	Gestion des utilisateurs.
+•	Gestion des annonces.
+•	Modération.
+•	Statistiques.
+•	Journal administratif.
+Phase 5 : paiement et livraison
+•	Intégration du prestataire de paiement.
+•	Vérification des transactions.
+•	Gestion des commandes si retenue.
+•	Développement de la livraison si retenue.
+Phase 6 : application Android
+•	Adaptation mobile.
+•	Tests Android.
+•	Optimisation.
+•	Génération APK/AAB.
+Phase 7 : tests et lancement
+•	Tests de sécurité.
+•	Tests des fonctionnalités.
+•	Tests de performance.
+•	Correction des anomalies.
+•	Déploiement du site.
+•	Publication Android.
+•	Formation de l'administrateur.
+19. CRITÈRES DE VALIDATION ET DE RECETTE
+Le projet sera considéré comme fonctionnel lorsque les tests suivants seront réussis :
+Test	Résultat attendu
+Inscription	Un utilisateur peut créer un compte
+Connexion	L'utilisateur peut se connecter
+Publication	Le vendeur peut envoyer une annonce
+Photos	Les images sont enregistrées et affichées
+Validation	Une annonce en attente n'est pas publique
+Recherche	Les produits peuvent être recherchés
+Localisation	Divo, Lakota et Gagnoa sont sélectionnables
+Quartier	Le quartier ou village est affiché
+Appel	Le bouton ouvre le téléphone
+WhatsApp	Le bouton ouvre la conversation
+Favoris	Les produits peuvent être enregistrés
+Administration	Les pages privées sont protégées
+Modération	L'administrateur peut valider ou refuser
+Paiement	Une transaction est vérifiée côté serveur
+Android	L'application fonctionne sur Android
+Web	Le site fonctionne sur ordinateur et mobile
+Des tests devront également confirmer qu'un utilisateur ordinaire ne peut jamais modifier les données administratives ou consulter les informations privées d'un autre compte.
+20. ÉVOLUTIONS FUTURES
+Après le lancement dans les trois premières villes, LOKODA MARKET pourra évoluer vers :
+•	Abidjan.
+•	San Pedro.
+•	Daloa.
+•	Soubré.
+•	Yamoussoukro.
+•	Autres villes de Côte d'Ivoire.
+•	Extension à d'autres pays africains.
+Autres fonctionnalités possibles :
+•	Boutiques professionnelles.
+•	Abonnements vendeurs.
+•	Annonces sponsorisées.
+•	Classement des vendeurs.
+•	Système d'avis.
+•	Messagerie intégrée.
+•	Service de livraison.
+•	Géolocalisation sur carte.
+•	Programme de fidélité.
+•	Codes promotionnels.
+•	Application iOS.
+________________________________________
+21. RÉSULTAT FINAL ATTENDU
+À la fin du développement, LOKODA MARKET devra être une véritable marketplace opérationnelle comprenant :
+UNE PLATEFORME PUBLIQUE
+•	Site web accessible à tous.
+•	Application Android.
+•	Catalogue de produits.
+•	Recherche par ville et catégorie.
+•	Publications des vendeurs.
+•	Contact par appel et WhatsApp.
+•	Localisation quartier et village.
+UN ESPACE VENDEUR
+•	Profil commercial.
+•	Gestion des annonces.
+•	Gestion des photos.
+•	Statistiques.
+•	Gestion des coordonnées.
+UN ESPACE ADMINISTRATEUR PRIVÉ
+•	Invisible dans la navigation publique.
+•	Authentification sécurisée.
+•	Gestion intégrale des utilisateurs.
+•	Gestion des annonces.
+•	Gestion des catégories.
+•	Contrôle des paiements.
+•	Statistiques générales.
+•	Paramètres de la plateforme.
+UNE INFRASTRUCTURE ÉVOLUTIVE
+•	Base de données centralisée.
+•	Site et Android synchronisés.
+•	Sécurité renforcée.
+•	Possibilité d'ajouter de nouvelles villes.
+•	Possibilité d'intégrer de nouveaux services.
+LOKODA MARKET : le commerce de proximité à portée de main.
+Document de référence pour la conception, le développement, les tests, le déploiement et la maintenance de la plateforme.
+22. Décisions à confirmer avant le développement définitif
+Le cahier des charges est établi. Il reste trois choix commerciaux à arrêter pour éviter toute ambiguïté pendant la programmation :
+1.	Livraison : organisation directe entre acheteur et vendeur, livraison par LOKODA ou les deux.
+2.	Modération : validation obligatoire des annonces avant publication ou publication automatique avec contrôle ultérieur.
+3.	Paiement intégré : paiement directement au vendeur ou paiement via LOKODA avec possibilité de commission.
+Je peux ensuite transformer ce cahier des charges en document Word professionnel et PDF prêt à imprimer, avec une couverture officielle LOKODA MARKET et son éléphant comme emblème.
+

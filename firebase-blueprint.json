@@ -1,0 +1,746 @@
+{
+  "entities": {
+    "City": {
+      "title": "City",
+      "description": "Official city and covered neighborhoods/villages for LOKODA MARKET.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "region": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "neighborhoods": {
+          "type": "array",
+          "description": "Bounded list of neighborhoods and surrounding villages (max 100)."
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "name", "region", "neighborhoods", "active"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Marketplace category from the 18 official LOKODA MARKET categories.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "iconName": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "name", "iconName", "slug", "description", "active"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Global platform configuration and moderation/delivery rules.",
+      "type": "object",
+      "properties": {
+        "siteName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "tagline": {
+          "type": "string",
+          "maxLength": 250
+        },
+        "symbol": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "contactPhone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "contactWhatsApp": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "contactEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120
+        },
+        "autoApproveListings": {
+          "type": "boolean"
+        },
+        "deliveryMode": {
+          "type": "string",
+          "enum": ["both", "direct_only", "lokoda_only"]
+        },
+        "commissionRate": {
+          "type": "number"
+        },
+        "minListingPrice": {
+          "type": "number"
+        },
+        "maxPhotosPerListing": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "siteName",
+        "tagline",
+        "symbol",
+        "contactPhone",
+        "contactWhatsApp",
+        "contactEmail",
+        "autoApproveListings",
+        "deliveryMode",
+        "commissionRate",
+        "minListingPrice",
+        "maxPhotosPerListing",
+        "updatedAt"
+      ]
+    },
+    "PublicUserProfile": {
+      "title": "PublicUserProfile",
+      "description": "Public storefront/account metadata without private PII.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "businessName": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "role": {
+          "type": "string",
+          "enum": ["buyer", "seller", "admin"]
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "neighborhood": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "avatarUrl": {
+          "type": "string",
+          "maxLength": 60000
+        },
+        "bio": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended", "blocked"]
+        },
+        "rating": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "name", "role", "city", "neighborhood", "avatarUrl", "registeredAt", "status"]
+    },
+    "PrivateUserInfo": {
+      "title": "PrivateUserInfo",
+      "description": "Isolated private PII (email, phone, whatsapp) readable only by the account owner or admin.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "whatsapp": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "email", "phone", "whatsapp", "updatedAt"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "Saved listing bookmark scoped to an authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "listingId", "createdAt"]
+    },
+    "Listing": {
+      "title": "Listing",
+      "description": "Marketplace product or service listing in FCFA.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 180
+        },
+        "price": {
+          "type": "number"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 4000
+        },
+        "categoryId": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "condition": {
+          "type": "string",
+          "enum": ["neuf", "occasion"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["approved", "pending", "rejected", "suspended"]
+        },
+        "rejectionReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "photos": {
+          "type": "array",
+          "description": "Bounded array of 1 to 5 photo URLs or compressed JPEG data URLs."
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "sellerBusinessName": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "sellerPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "sellerWhatsApp": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "sellerAvatar": {
+          "type": "string",
+          "maxLength": 60000
+        },
+        "sellerRating": {
+          "type": "number"
+        },
+        "sellerVerified": {
+          "type": "boolean"
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "neighborhood": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "addressDetails": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "viewsCount": {
+          "type": "number"
+        },
+        "callClicksCount": {
+          "type": "number"
+        },
+        "whatsappClicksCount": {
+          "type": "number"
+        },
+        "featured": {
+          "type": "boolean"
+        },
+        "popular": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "price",
+        "description",
+        "categoryId",
+        "condition",
+        "status",
+        "photos",
+        "sellerId",
+        "sellerName",
+        "sellerPhone",
+        "sellerWhatsApp",
+        "city",
+        "neighborhood",
+        "createdAt",
+        "updatedAt",
+        "viewsCount",
+        "callClicksCount",
+        "whatsappClicksCount"
+      ]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Mobile Money or direct payment order record.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64
+        },
+        "listingId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingTitle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180
+        },
+        "listingPhoto": {
+          "type": "string",
+          "maxLength": 150000
+        },
+        "amount": {
+          "type": "number"
+        },
+        "deliveryFee": {
+          "type": "number"
+        },
+        "totalAmount": {
+          "type": "number"
+        },
+        "buyerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "buyerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "buyerPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "buyerWhatsApp": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "buyerEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "buyerCity": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "buyerNeighborhood": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "sellerPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 40
+        },
+        "sellerCity": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "method": {
+          "type": "string",
+          "enum": ["wave", "orange_money", "mtn_momo", "moov_money", "cinetpay", "cash_on_delivery"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["initiated", "pending", "paid", "failed", "refunded"]
+        },
+        "deliveryOption": {
+          "type": "string",
+          "enum": ["direct", "lokoda_express"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paidAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "reference",
+        "listingId",
+        "listingTitle",
+        "listingPhoto",
+        "amount",
+        "deliveryFee",
+        "totalAmount",
+        "buyerId",
+        "buyerName",
+        "buyerPhone",
+        "buyerCity",
+        "buyerNeighborhood",
+        "sellerId",
+        "sellerName",
+        "sellerPhone",
+        "sellerCity",
+        "method",
+        "status",
+        "deliveryOption",
+        "createdAt"
+      ]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Abuse or fraud report submitted against a listing.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "listingTitle": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "reporterId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "arnaque",
+            "faux_produit",
+            "mauvaise_description",
+            "produit_interdit",
+            "prix_trompeur",
+            "contenu_inapproprie",
+            "vendeur_suspect"
+          ]
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1500
+        },
+        "reporterContact": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "reviewed", "action_taken", "dismissed"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "resolvedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "listingId",
+        "listingTitle",
+        "sellerName",
+        "reporterId",
+        "reason",
+        "comment",
+        "status",
+        "createdAt"
+      ]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "In-app user notification.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 150
+        },
+        "message": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 600
+        },
+        "type": {
+          "type": "string",
+          "enum": ["approval", "rejection", "transaction", "system"]
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "AdminLog": {
+      "title": "AdminLog",
+      "description": "Immutable administrative audit trail entry.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180
+        },
+        "targetType": {
+          "type": "string",
+          "enum": ["listing", "user", "category", "city", "setting", "payment"]
+        },
+        "targetId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "performedBy": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "adminId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": ["id", "action", "targetType", "targetId", "performedBy", "adminId", "timestamp"]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Trusted admin UID registry document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/cities/{cityId}": {
+      "schema": { "$ref": "#/entities/City" },
+      "description": "Covered cities and neighborhoods."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Official marketplace categories."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/PlatformSettings" },
+      "description": "Global platform configuration."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/PublicUserProfile" },
+      "description": "Public storefront profile without PII."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/PrivateUserInfo" },
+      "description": "Owner/Admin-only private PII document."
+    },
+    "/users/{userId}/favorites/{listingId}": {
+      "schema": { "$ref": "#/entities/Favorite" },
+      "description": "User-scoped favorite listings."
+    },
+    "/listings/{listingId}": {
+      "schema": { "$ref": "#/entities/Listing" },
+      "description": "Published and moderated marketplace listings."
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Orders and Mobile Money payment records."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Listing abuse reports."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "User-scoped notifications."
+    },
+    "/admin_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminLog" },
+      "description": "Immutable admin audit log."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Server/admin registry for RBAC lookups."
+    }
+  }
+}

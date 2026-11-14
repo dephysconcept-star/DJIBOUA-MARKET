@@ -1,0 +1,8 @@
+{
+  "name": "LOKODA MARKET",
+  "description": "La marketplace de proximité de Côte d'Ivoire (Divo, Lakota, Gagnoa). Achetez, vendez et trouvez près de chez vous avec contact direct Appel & WhatsApp, paiement sécurisé et livraison.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
