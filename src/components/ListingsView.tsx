@@ -68,17 +68,24 @@ export const ListingsView: React.FC<ListingsViewProps> = ({
         combined.push(trimmed);
       }
     };
+    const nowMs = Date.now();
     activeCityObj?.neighborhoods.forEach(addUnique);
     listings
-      .filter(l => l.status === 'approved' && l.city.toLowerCase() === selectedCity.toLowerCase())
-      .forEach(l => addUnique(l.neighborhood));
+      .filter(
+        (l) =>
+          l.status === 'approved' &&
+          (!l.expiresAt || new Date(l.expiresAt).getTime() > nowMs) &&
+          l.city.toLowerCase() === selectedCity.toLowerCase()
+      )
+      .forEach((l) => addUnique(l.neighborhood));
     return combined;
   }, [activeCityObj, listings, selectedCity]);
 
   // Filter listings
   const filteredListings = listings.filter(item => {
-    // Only approved listings are visible to public
+    // Only approved & non-expired listings are visible to public
     if (item.status !== 'approved') return false;
+    if (item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now()) return false;
 
     // City Filter
     if (selectedCity !== 'all' && item.city.toLowerCase() !== selectedCity.toLowerCase()) {
@@ -116,8 +123,10 @@ export const ListingsView: React.FC<ListingsViewProps> = ({
     return true;
   });
 
-  // Sort listings
+  // Sort listings (Priority listings always appear first)
   const sortedListings = [...filteredListings].sort((a, b) => {
+    const priorityDiff = Number(Boolean(b.isPriority)) - Number(Boolean(a.isPriority));
+    if (priorityDiff !== 0) return priorityDiff;
     if (sortBy === 'price_asc') return a.price - b.price;
     if (sortBy === 'price_desc') return b.price - a.price;
     if (sortBy === 'popular') return b.viewsCount - a.viewsCount;

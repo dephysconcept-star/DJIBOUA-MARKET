@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { hashPassword, verifyPassword } from '../lib/session-token.ts';
 import {
   INITIAL_CATEGORIES,
   INITIAL_CITIES,
@@ -63,6 +64,14 @@ const sbWrap = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn();
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes('existe déjà') ||
+        error.message.includes('Identifiant ou mot de passe') ||
+        error.message.includes('suspendu'))
+    ) {
+      throw error;
+    }
     console.error(`Supabase query failed (${label}):`, error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
@@ -136,7 +145,74 @@ const mapUserRow = (row: Record<string, unknown>, includePii: boolean): UserProf
   rating: row.rating !== null && row.rating !== undefined ? Number(row.rating) : 5.0,
 });
 
-const mapListingRow = (row: Record<string, unknown>): Listing => ({
+type ListingMetaEntry = {
+  isPriority?: boolean;
+  durationDays?: number | null;
+  expiresAt?: string | null;
+  paymentReceiptUrl?: string | null;
+  paymentReceiptName?: string | null;
+  paymentReceiptSentAt?: string | null;
+};
+
+type ListingMetaVault = Record<string, ListingMetaEntry>;
+
+const LISTING_META_VAULT_ID = 'listing_meta_vault';
+
+const isMissingListingMetaColumnError = (err: unknown): boolean => {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string; details?: string };
+  const text = `${e.code || ''} ${e.message || ''} ${e.details || ''}`.toLowerCase();
+  return (
+    text.includes('is_priority') ||
+    text.includes('duration_days') ||
+    text.includes('expires_at') ||
+    text.includes('payment_receipt') ||
+    text.includes('pgrst204') ||
+    text.includes('42703')
+  );
+};
+
+async function readListingMetaVaultSupabase(sb: SupabaseClient): Promise<ListingMetaVault> {
+  const { data } = await sb
+    .from('settings')
+    .select('tagline')
+    .eq('id', LISTING_META_VAULT_ID)
+    .maybeSingle();
+  if (!data?.tagline) return {};
+  try {
+    const parsed = JSON.parse(String(data.tagline));
+    return parsed && typeof parsed === 'object' ? (parsed as ListingMetaVault) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeListingMetaVaultSupabase(
+  sb: SupabaseClient,
+  vault: ListingMetaVault
+): Promise<void> {
+  const { error } = await sb.from('settings').upsert(
+    {
+      id: LISTING_META_VAULT_ID,
+      site_name: 'LISTING_META_VAULT',
+      tagline: JSON.stringify(vault),
+      symbol: 'FCFA',
+      contact_phone: '+225',
+      contact_whatsapp: '+225',
+      contact_email: 'meta@djibouamarket.ci',
+      auto_approve_listings: false,
+      delivery_mode: 'both',
+      commission_rate: 2.5,
+      min_listing_price: 500,
+      max_photos_per_listing: 5,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+  assertNoError(error, 'writeListingMetaVault');
+}
+
+const mapListingRow = (row: Record<string, unknown>, meta?: ListingMetaEntry): Listing => ({
   id: String(row.id),
   title: String(row.title),
   price: Number(row.price || 0),
@@ -170,6 +246,42 @@ const mapListingRow = (row: Record<string, unknown>): Listing => ({
   whatsappClicksCount: Number(row.whatsapp_clicks_count || 0),
   featured: row.featured !== null && row.featured !== undefined ? Boolean(row.featured) : undefined,
   popular: row.popular !== null && row.popular !== undefined ? Boolean(row.popular) : undefined,
+  isPriority:
+    meta?.isPriority !== undefined
+      ? Boolean(meta.isPriority)
+      : row.is_priority !== null && row.is_priority !== undefined
+        ? Boolean(row.is_priority)
+        : false,
+  durationDays:
+    meta?.durationDays !== undefined
+      ? meta.durationDays
+      : row.duration_days !== null && row.duration_days !== undefined
+        ? Number(row.duration_days)
+        : null,
+  expiresAt:
+    meta?.expiresAt !== undefined
+      ? meta.expiresAt
+      : row.expires_at
+        ? toIso(row.expires_at)
+        : null,
+  paymentReceiptUrl:
+    meta?.paymentReceiptUrl !== undefined
+      ? meta.paymentReceiptUrl
+      : row.payment_receipt_url
+        ? String(row.payment_receipt_url)
+        : null,
+  paymentReceiptName:
+    meta?.paymentReceiptName !== undefined
+      ? meta.paymentReceiptName
+      : row.payment_receipt_name
+        ? String(row.payment_receipt_name)
+        : null,
+  paymentReceiptSentAt:
+    meta?.paymentReceiptSentAt !== undefined
+      ? meta.paymentReceiptSentAt
+      : row.payment_receipt_sent_at
+        ? toIso(row.payment_receipt_sent_at)
+        : null,
 });
 
 const mapTransactionRow = (row: Record<string, unknown>): Transaction => ({
@@ -428,7 +540,7 @@ export async function getBootstrapDataSupabase(uid?: string, isAdmin = false) {
     await seedInitialDatabaseSupabase(false);
     const sb = getSupabaseAdmin();
 
-    const [cityRes, catRes, setRes, pubListRes, sellerRes] = await Promise.all([
+    const [cityRes, catRes, setRes, pubListRes, sellerRes, metaVault] = await Promise.all([
       sb.from('cities').select('*').eq('active', true),
       sb.from('categories').select('*').eq('active', true),
       sb.from('settings').select('*').eq('id', 'general'),
@@ -438,6 +550,7 @@ export async function getBootstrapDataSupabase(uid?: string, isAdmin = false) {
         .eq('status', 'approved')
         .order('created_at', { ascending: false }),
       sb.from('users').select('*').eq('role', 'seller'),
+      readListingMetaVaultSupabase(sb),
     ]);
 
     assertNoError(cityRes.error, 'cities fetch');
@@ -487,7 +600,7 @@ export async function getBootstrapDataSupabase(uid?: string, isAdmin = false) {
       ]);
 
       currentUser = usrRes.data?.[0] ? mapUserRow(usrRes.data[0], true) : null;
-      myListings = (myLstRes.data || []).map(mapListingRow);
+      myListings = (myLstRes.data || []).map((row) => mapListingRow(row, metaVault[String(row.id)]));
       myFavorites = (favRes.data || []).map((f) => String(f.listing_id));
       myNotifications = (notifRes.data || []).map(mapNotificationRow);
       myTransactions = (trxRes.data || []).map(mapTransactionRow);
@@ -515,7 +628,7 @@ export async function getBootstrapDataSupabase(uid?: string, isAdmin = false) {
         ]);
 
       adminData = {
-        allListings: (allLstRes.data || []).map(mapListingRow),
+        allListings: (allLstRes.data || []).map((row) => mapListingRow(row, metaVault[String(row.id)])),
         allUsers: (allUsrRes.data || []).map((u) => mapUserRow(u, true)),
         allTransactions: (allTrxRes.data || []).map(mapTransactionRow),
         allReports: (allRepRes.data || []).map(mapReportRow),
@@ -524,12 +637,22 @@ export async function getBootstrapDataSupabase(uid?: string, isAdmin = false) {
       };
     }
 
+    const nowMs = Date.now();
+    const activePublicListings = (pubListRes.data || [])
+      .map((row) => mapListingRow(row, metaVault[String(row.id)]))
+      .filter((l) => !l.expiresAt || new Date(l.expiresAt).getTime() > nowMs)
+      .sort((a, b) => {
+        const pDiff = Number(Boolean(b.isPriority)) - Number(Boolean(a.isPriority));
+        if (pDiff !== 0) return pDiff;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
     return {
       isDbSeeded: Boolean(setRes.data && setRes.data.length > 0),
       cities: mappedCities,
       categories: mappedCategories,
       settings: mappedSettings,
-      publicListings: (pubListRes.data || []).map(mapListingRow),
+      publicListings: activePublicListings,
       publicSellers: (sellerRes.data || []).map((u) => mapUserRow(u, false)),
       currentUser,
       myListings,
@@ -620,6 +743,301 @@ export async function upsertRegisteredUserSupabase(input: {
   });
 }
 
+const configuredAdminPassword = process.env.ADMIN_PORTAL_PASSWORD;
+
+const normalizeDigits = (val: string): string => val.replace(/\D/g, '');
+
+const phonesMatch = (a: string, b: string): boolean => {
+  const da = normalizeDigits(a);
+  const dbDigits = normalizeDigits(b);
+  if (da.length < 8 || dbDigits.length < 8) return false;
+  return da === dbDigits || da.endsWith(dbDigits) || dbDigits.endsWith(da);
+};
+
+type CredentialVaultEntry = {
+  username?: string;
+  passwordHash: string;
+};
+
+type CredentialVault = Record<string, CredentialVaultEntry>;
+
+const CREDENTIAL_VAULT_SETTINGS_ID = 'auth_credentials';
+
+const isMissingCredentialColumnError = (err: unknown): boolean => {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string; details?: string };
+  const text = `${e.code || ''} ${e.message || ''} ${e.details || ''}`.toLowerCase();
+  return (
+    text.includes('username') ||
+    text.includes('password_hash') ||
+    text.includes('pgrst204') ||
+    text.includes('42703')
+  );
+};
+
+async function readCredentialVaultSupabase(sb: SupabaseClient): Promise<CredentialVault> {
+  const { data } = await sb
+    .from('settings')
+    .select('tagline')
+    .eq('id', CREDENTIAL_VAULT_SETTINGS_ID)
+    .maybeSingle();
+  if (!data?.tagline) return {};
+  try {
+    const parsed = JSON.parse(String(data.tagline));
+    return parsed && typeof parsed === 'object' ? (parsed as CredentialVault) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeCredentialVaultSupabase(
+  sb: SupabaseClient,
+  vault: CredentialVault
+): Promise<void> {
+  const { error } = await sb.from('settings').upsert(
+    {
+      id: CREDENTIAL_VAULT_SETTINGS_ID,
+      site_name: 'AUTH_CREDENTIALS',
+      tagline: JSON.stringify(vault),
+      symbol: 'FCFA',
+      contact_phone: '+225',
+      contact_whatsapp: '+225',
+      contact_email: 'auth@djibouamarket.ci',
+      auto_approve_listings: false,
+      delivery_mode: 'both',
+      commission_rate: 2.5,
+      min_listing_price: 500,
+      max_photos_per_listing: 5,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+  assertNoError(error, 'writeCredentialVault');
+}
+
+export async function registerWithCredentialsRecordSupabase(input: {
+  identifier: string;
+  password: string;
+  name: string;
+  businessName?: string;
+  email?: string;
+  phone: string;
+  whatsapp: string;
+  role: 'buyer' | 'seller';
+  city: string;
+  neighborhood: string;
+  avatarUrl: string;
+}): Promise<UserProfile> {
+  return sbWrap('registerWithCredentialsRecordSupabase', async () => {
+    const sb = getSupabaseAdmin();
+    const cleanIdent = input.identifier.trim().toLowerCase();
+    const cleanEmail = (
+      input.email ||
+      (cleanIdent.includes('@')
+        ? cleanIdent
+        : `${cleanIdent.replace(/[^a-z0-9._-]/g, '_')}@djibouamarket.ci`)
+    )
+      .trim()
+      .toLowerCase();
+
+    const [{ data: existingRows, error: listErr }, vault] = await Promise.all([
+      sb.from('users').select('*'),
+      readCredentialVaultSupabase(sb),
+    ]);
+    assertNoError(listErr, 'checkExistingUsers');
+
+    const conflict = (existingRows || []).find((u) => {
+      const uidKey = String(u.id);
+      const vaultEntry = vault[uidKey];
+      const uname = u.username ? String(u.username) : vaultEntry?.username;
+      const pHash = u.password_hash ? String(u.password_hash) : vaultEntry?.passwordHash;
+      if (!pHash) return false;
+      if (uname && uname.toLowerCase() === cleanIdent) return true;
+      if (cleanIdent.includes('@') && String(u.email || '').toLowerCase() === cleanIdent)
+        return true;
+      if (
+        phonesMatch(String(u.phone || ''), input.identifier) ||
+        phonesMatch(String(u.phone || ''), input.phone)
+      )
+        return true;
+      return false;
+    });
+
+    if (conflict) {
+      throw new Error('Un compte existe déjà avec cet identifiant ou ce numéro de téléphone.');
+    }
+
+    const uid = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const passwordHash = hashPassword(input.password);
+
+    const baseRow = {
+      id: uid,
+      uid,
+      name: input.name,
+      business_name: input.businessName || null,
+      email: cleanEmail,
+      phone: input.phone,
+      whatsapp: input.whatsapp,
+      role: input.role,
+      city: input.city,
+      neighborhood: input.neighborhood,
+      avatar_url: input.avatarUrl,
+      status: 'active',
+      rating: 5.0,
+    };
+
+    const { data, error } = await sb
+      .from('users')
+      .insert({
+        ...baseRow,
+        username: cleanIdent,
+        password_hash: passwordHash,
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      return mapUserRow(data, true);
+    }
+
+    if (!isMissingCredentialColumnError(error)) {
+      assertNoError(error, 'registerWithCredentials');
+    }
+
+    // Fallback when Supabase users table doesn't have username/password_hash columns yet
+    const { data: insertedBase, error: baseErr } = await sb
+      .from('users')
+      .insert(baseRow)
+      .select()
+      .single();
+    assertNoError(baseErr, 'registerWithCredentialsBase');
+
+    vault[uid] = { username: cleanIdent, passwordHash };
+    await writeCredentialVaultSupabase(sb, vault);
+
+    return mapUserRow(insertedBase, true);
+  });
+}
+
+export async function loginWithCredentialsRecordSupabase(
+  identifier: string,
+  password: string
+): Promise<UserProfile> {
+  return sbWrap('loginWithCredentialsRecordSupabase', async () => {
+    const sb = getSupabaseAdmin();
+    const cleanIdent = identifier.trim().toLowerCase();
+    const [{ data: allUsers, error }, vault] = await Promise.all([
+      sb.from('users').select('*'),
+      readCredentialVaultSupabase(sb),
+    ]);
+    assertNoError(error, 'fetchUsersForLogin');
+
+    const matched = (allUsers || []).find((u) => {
+      const uidKey = String(u.id);
+      const vaultEntry = vault[uidKey];
+      const uname = u.username ? String(u.username) : vaultEntry?.username;
+      const pHash = u.password_hash ? String(u.password_hash) : vaultEntry?.passwordHash;
+      if (!pHash) return false;
+      if (uname && uname.toLowerCase() === cleanIdent) return true;
+      if (u.email && String(u.email).toLowerCase() === cleanIdent) return true;
+      if (
+        phonesMatch(String(u.phone || ''), cleanIdent) ||
+        phonesMatch(String(u.whatsapp || ''), cleanIdent)
+      )
+        return true;
+      return false;
+    });
+
+    if (!matched) {
+      throw new Error('Identifiant ou mot de passe incorrect.');
+    }
+
+    const matchedHash = matched.password_hash
+      ? String(matched.password_hash)
+      : vault[String(matched.id)]?.passwordHash;
+
+    if (!matchedHash || !verifyPassword(password, matchedHash)) {
+      throw new Error('Identifiant ou mot de passe incorrect.');
+    }
+    if (matched.status !== 'active') {
+      throw new Error("Ce compte est actuellement suspendu par l'administration.");
+    }
+    return mapUserRow(matched, true);
+  });
+}
+
+export async function verifyAdminCredentialsRecordSupabase(
+  login: string,
+  password: string
+): Promise<boolean> {
+  return sbWrap('verifyAdminCredentialsRecordSupabase', async () => {
+    const cleanLogin = login.trim().toLowerCase();
+    if (cleanLogin !== 'adminlokoda' && cleanLogin !== 'federationopareko@gmail.com') {
+      return false;
+    }
+    const sb = getSupabaseAdmin();
+    const [{ data: adminRow, error }, vault] = await Promise.all([
+      sb.from('users').select('*').eq('id', 'admin_lokoda').maybeSingle(),
+      readCredentialVaultSupabase(sb),
+    ]);
+    if (!error && adminRow?.password_hash) {
+      return verifyPassword(password, String(adminRow.password_hash));
+    }
+    if (vault.admin_lokoda?.passwordHash) {
+      return verifyPassword(password, vault.admin_lokoda.passwordHash);
+    }
+    return Boolean(configuredAdminPassword && password === configuredAdminPassword);
+  });
+}
+
+export async function updateAdminPasswordRecordSupabase(
+  oldPassword: string,
+  newPassword: string
+): Promise<boolean> {
+  return sbWrap('updateAdminPasswordRecordSupabase', async () => {
+    const valid = await verifyAdminCredentialsRecordSupabase('adminlokoda', oldPassword);
+    if (!valid) return false;
+    const sb = getSupabaseAdmin();
+    const newHash = hashPassword(newPassword);
+    const baseAdmin = {
+      id: 'admin_lokoda',
+      uid: 'admin_lokoda',
+      name: 'Administrateur DJIBOUA MARKET',
+      email: 'federationopareko@gmail.com',
+      phone: '+225 2724529562',
+      whatsapp: '0777733284',
+      role: 'admin',
+      city: 'Divo',
+      neighborhood: 'Plateau',
+      avatar_url: '',
+      status: 'active',
+      rating: 5.0,
+    };
+
+    const { error } = await sb.from('users').upsert(
+      {
+        ...baseAdmin,
+        username: 'adminlokoda',
+        password_hash: newHash,
+      },
+      { onConflict: 'id' }
+    );
+    if (!error) {
+      return true;
+    }
+    if (!isMissingCredentialColumnError(error)) {
+      assertNoError(error, 'updateAdminPassword');
+    }
+
+    const { error: baseErr } = await sb.from('users').upsert(baseAdmin, { onConflict: 'id' });
+    assertNoError(baseErr, 'updateAdminProfile');
+    const vault = await readCredentialVaultSupabase(sb);
+    vault.admin_lokoda = { username: 'adminlokoda', passwordHash: newHash };
+    await writeCredentialVaultSupabase(sb, vault);
+    return true;
+  });
+}
+
 export async function updateUserProfileRecordSupabase(
   userId: string,
   updates: Partial<UserProfile>
@@ -674,9 +1092,12 @@ export async function updateUserStatusRecordSupabase(
 export async function getListingByIdSupabase(id: string): Promise<Listing | null> {
   return sbWrap('getListingByIdSupabase', async () => {
     const sb = getSupabaseAdmin();
-    const { data, error } = await sb.from('listings').select('*').eq('id', id).maybeSingle();
+    const [{ data, error }, vault] = await Promise.all([
+      sb.from('listings').select('*').eq('id', id).maybeSingle(),
+      readListingMetaVaultSupabase(sb),
+    ]);
     assertNoError(error, 'getListingById');
-    return data ? mapListingRow(data) : null;
+    return data ? mapListingRow(data, vault[id]) : null;
   });
 }
 
@@ -724,33 +1145,102 @@ export async function updateListingRecordSupabase(
 ): Promise<Listing | null> {
   return sbWrap('updateListingRecordSupabase', async () => {
     const sb = getSupabaseAdmin();
-    const setValues: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (updates.title !== undefined) setValues.title = updates.title;
-    if (updates.price !== undefined) setValues.price = updates.price;
-    if (updates.description !== undefined) setValues.description = updates.description;
-    if (updates.categoryId !== undefined) setValues.category_id = updates.categoryId;
-    if (updates.condition !== undefined) setValues.condition = updates.condition;
-    if (updates.status !== undefined) setValues.status = updates.status;
+    const baseValues: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (updates.title !== undefined) baseValues.title = updates.title;
+    if (updates.price !== undefined) baseValues.price = updates.price;
+    if (updates.description !== undefined) baseValues.description = updates.description;
+    if (updates.categoryId !== undefined) baseValues.category_id = updates.categoryId;
+    if (updates.condition !== undefined) baseValues.condition = updates.condition;
+    if (updates.status !== undefined) baseValues.status = updates.status;
     if (updates.rejectionReason !== undefined)
-      setValues.rejection_reason = updates.rejectionReason;
-    if (updates.photos !== undefined) setValues.photos = updates.photos;
-    if (updates.city !== undefined) setValues.city = updates.city;
-    if (updates.neighborhood !== undefined) setValues.neighborhood = updates.neighborhood;
-    if (updates.addressDetails !== undefined) setValues.address_details = updates.addressDetails;
-    if (updates.sellerName !== undefined) setValues.seller_name = updates.sellerName;
+      baseValues.rejection_reason = updates.rejectionReason;
+    if (updates.photos !== undefined) baseValues.photos = updates.photos;
+    if (updates.city !== undefined) baseValues.city = updates.city;
+    if (updates.neighborhood !== undefined) baseValues.neighborhood = updates.neighborhood;
+    if (updates.addressDetails !== undefined) baseValues.address_details = updates.addressDetails;
+    if (updates.sellerName !== undefined) baseValues.seller_name = updates.sellerName;
     if (updates.sellerBusinessName !== undefined)
-      setValues.seller_business_name = updates.sellerBusinessName;
-    if (updates.sellerPhone !== undefined) setValues.seller_phone = updates.sellerPhone;
-    if (updates.sellerWhatsApp !== undefined) setValues.seller_whatsapp = updates.sellerWhatsApp;
+      baseValues.seller_business_name = updates.sellerBusinessName;
+    if (updates.sellerPhone !== undefined) baseValues.seller_phone = updates.sellerPhone;
+    if (updates.sellerWhatsApp !== undefined) baseValues.seller_whatsapp = updates.sellerWhatsApp;
+
+    const metaColumnValues: Record<string, unknown> = {};
+    const metaPatch: ListingMetaEntry = {};
+    let hasMetaUpdate = false;
+
+    if (updates.isPriority !== undefined) {
+      metaColumnValues.is_priority = Boolean(updates.isPriority);
+      metaPatch.isPriority = Boolean(updates.isPriority);
+      hasMetaUpdate = true;
+    }
+    if (updates.durationDays !== undefined) {
+      metaColumnValues.duration_days = updates.durationDays;
+      metaPatch.durationDays = updates.durationDays;
+      hasMetaUpdate = true;
+    }
+    if (updates.expiresAt !== undefined) {
+      metaColumnValues.expires_at = updates.expiresAt ? toIso(updates.expiresAt) : null;
+      metaPatch.expiresAt = updates.expiresAt ? toIso(updates.expiresAt) : null;
+      hasMetaUpdate = true;
+    }
+    if (updates.paymentReceiptUrl !== undefined) {
+      metaColumnValues.payment_receipt_url = updates.paymentReceiptUrl;
+      metaPatch.paymentReceiptUrl = updates.paymentReceiptUrl;
+      hasMetaUpdate = true;
+    }
+    if (updates.paymentReceiptName !== undefined) {
+      metaColumnValues.payment_receipt_name = updates.paymentReceiptName;
+      metaPatch.paymentReceiptName = updates.paymentReceiptName;
+      hasMetaUpdate = true;
+    }
+    if (updates.paymentReceiptSentAt !== undefined) {
+      metaColumnValues.payment_receipt_sent_at = updates.paymentReceiptSentAt
+        ? toIso(updates.paymentReceiptSentAt)
+        : null;
+      metaPatch.paymentReceiptSentAt = updates.paymentReceiptSentAt
+        ? toIso(updates.paymentReceiptSentAt)
+        : null;
+      hasMetaUpdate = true;
+    }
 
     const { data, error } = await sb
       .from('listings')
-      .update(setValues)
+      .update({ ...baseValues, ...metaColumnValues })
       .eq('id', id)
       .select()
       .maybeSingle();
-    assertNoError(error, 'updateListing');
-    return data ? mapListingRow(data) : null;
+
+    if (!error) {
+      const vault = await readListingMetaVaultSupabase(sb);
+      if (hasMetaUpdate && vault[id]) {
+        vault[id] = { ...vault[id], ...metaPatch };
+        await writeListingMetaVaultSupabase(sb, vault);
+      }
+      return data ? mapListingRow(data, vault[id]) : null;
+    }
+
+    if (!isMissingListingMetaColumnError(error)) {
+      assertNoError(error, 'updateListing');
+    }
+
+    // Fallback: Supabase listings table does not yet have priority/duration/receipt columns
+    const { data: baseData, error: baseErr } = await sb
+      .from('listings')
+      .update(baseValues)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    assertNoError(baseErr, 'updateListingBase');
+
+    if (!baseData) return null;
+
+    const vault = await readListingMetaVaultSupabase(sb);
+    if (hasMetaUpdate) {
+      vault[id] = { ...(vault[id] || {}), ...metaPatch };
+      await writeListingMetaVaultSupabase(sb, vault);
+    }
+
+    return mapListingRow(baseData, vault[id]);
   });
 }
 
@@ -762,6 +1252,11 @@ export async function deleteListingRecordSupabase(id: string): Promise<void> {
     await sb.from('transactions').delete().eq('listing_id', id);
     const { error } = await sb.from('listings').delete().eq('id', id);
     assertNoError(error, 'deleteListing');
+    const vault = await readListingMetaVaultSupabase(sb);
+    if (vault[id]) {
+      delete vault[id];
+      await writeListingMetaVaultSupabase(sb, vault);
+    }
   });
 }
 

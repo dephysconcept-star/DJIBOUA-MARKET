@@ -49,14 +49,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  const approved = listings.filter(l => l.status === 'approved');
+  const nowMs = Date.now();
+  const approved = listings.filter(
+    (l) => l.status === 'approved' && (!l.expiresAt || new Date(l.expiresAt).getTime() > nowMs)
+  );
 
-  // Featured / Recommandées
-  const featuredListings = approved.filter(l => l.featured).slice(0, 4);
+  const byPriorityThenRecent = (a: Listing, b: Listing) => {
+    const pDiff = Number(Boolean(b.isPriority)) - Number(Boolean(a.isPriority));
+    if (pDiff !== 0) return pDiff;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  };
+
+  // Featured / Recommandées / Prioritaires
+  const featuredListings = approved
+    .filter((l) => l.featured || l.isPriority)
+    .sort(byPriorityThenRecent)
+    .slice(0, 4);
   // Populaires
-  const popularListings = approved.filter(l => l.popular || l.viewsCount > 200).slice(0, 4);
-  // Récents
-  const recentListings = [...approved].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8);
+  const popularListings = approved
+    .filter((l) => l.popular || l.viewsCount > 200)
+    .sort(byPriorityThenRecent)
+    .slice(0, 4);
+  // Récents (Prioritaires en tête)
+  const recentListings = [...approved].sort(byPriorityThenRecent).slice(0, 8);
 
   // Local vendors
   const vendors = users.filter(u => u.role === 'seller');

@@ -39,7 +39,20 @@ export interface Listing {
   whatsappClicksCount: number;
   featured?: boolean;
   popular?: boolean;
+  isPriority?: boolean;
+  durationDays?: number | null;
+  expiresAt?: string | null;
+  paymentReceiptUrl?: string | null;
+  paymentReceiptName?: string | null;
+  paymentReceiptSentAt?: string | null;
 }
+
+export const LISTING_DURATIONS: { days: number; label: string }[] = [
+  { days: 7, label: '1 semaine' },
+  { days: 14, label: '2 semaines' },
+  { days: 21, label: '3 semaines' },
+  { days: 30, label: '1 mois' },
+];
 
 export interface Category {
   id: string;

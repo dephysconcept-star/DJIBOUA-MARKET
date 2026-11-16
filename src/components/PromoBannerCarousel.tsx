@@ -44,7 +44,7 @@ export const PromoBannerCarousel: React.FC<PromoBannerCarouselProps> = ({
   onOpenPublishModal,
   previewMode = false,
 }) => {
-  const { settings, setCurrentView, isFirebaseAdmin } = useMarket();
+  const { settings, setCurrentView, isAdminAuthorized } = useMarket();
   const sourceSlides = slides ?? settings.promoBanners ?? [];
   const activeSlides = sourceSlides.filter((s) => s.active && s.title.trim().length > 0);
 
@@ -202,7 +202,7 @@ export const PromoBannerCarousel: React.FC<PromoBannerCarouselProps> = ({
             </div>
           )}
 
-          {isFirebaseAdmin && !previewMode && (
+          {isAdminAuthorized && !previewMode && (
             <button
               type="button"
               onClick={() => setCurrentView('admin_private')}

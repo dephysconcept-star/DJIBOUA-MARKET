@@ -1,5 +1,6 @@
 import { and, desc, eq, or } from 'drizzle-orm';
 import { db } from './index.ts';
+import { hashPassword, verifyPassword } from '../lib/session-token.ts';
 import {
   adminLogs,
   categories,
@@ -49,9 +50,12 @@ import {
   getUserByUidSupabase,
   incrementListingMetricSupabase,
   isSupabaseConfigured,
+  loginWithCredentialsRecordSupabase,
   markNotificationReadRecordSupabase,
+  registerWithCredentialsRecordSupabase,
   seedInitialDatabaseSupabase,
   toggleFavoriteRecordSupabase,
+  updateAdminPasswordRecordSupabase,
   updateListingRecordSupabase,
   updateReportStatusRecordSupabase,
   updateSettingsRecordSupabase,
@@ -60,12 +64,21 @@ import {
   updateUserStatusRecordSupabase,
   upsertCityRecordSupabase,
   upsertRegisteredUserSupabase,
+  verifyAdminCredentialsRecordSupabase,
 } from './supabase-repository.ts';
 
 const dbWrap = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
   try {
     return await fn();
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes('existe déjà') ||
+        error.message.includes('Identifiant ou mot de passe') ||
+        error.message.includes('suspendu'))
+    ) {
+      throw error;
+    }
     console.error(`Database query failed (${label}):`, error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
@@ -161,6 +174,12 @@ const mapListingRow = (row: typeof listings.$inferSelect): Listing => ({
   whatsappClicksCount: row.whatsappClicksCount,
   featured: row.featured ?? undefined,
   popular: row.popular ?? undefined,
+  isPriority: row.isPriority ?? false,
+  durationDays: row.durationDays ?? null,
+  expiresAt: row.expiresAt ? toIso(row.expiresAt) : null,
+  paymentReceiptUrl: row.paymentReceiptUrl || null,
+  paymentReceiptName: row.paymentReceiptName || null,
+  paymentReceiptSentAt: row.paymentReceiptSentAt ? toIso(row.paymentReceiptSentAt) : null,
 });
 
 const mapTransactionRow = (row: typeof transactions.$inferSelect): Transaction => ({
@@ -224,6 +243,17 @@ const mapAdminLogRow = (row: typeof adminLogs.$inferSelect): AdminLog => ({
   timestamp: toIso(row.timestamp),
   details: row.details || undefined,
 });
+
+const isLocalDemoMode = (): boolean => {
+  const hasSqlConfig = [
+    process.env.SQL_HOST,
+    process.env.SQL_USER,
+    process.env.SQL_PASSWORD,
+    process.env.SQL_DB_NAME,
+  ].some((value) => Boolean(value?.trim()));
+
+  return process.env.NODE_ENV !== 'production' && !isSupabaseConfigured() && !hasSqlConfig;
+};
 
 export async function seedInitialDatabase(force = false, adminUid?: string): Promise<void> {
   if (isSupabaseConfigured()) {
@@ -440,6 +470,46 @@ export async function getBootstrapData(uid?: string, isAdmin = false) {
   if (isSupabaseConfigured()) {
     return getBootstrapDataSupabase(uid, isAdmin);
   }
+  if (isLocalDemoMode()) {
+    const mappedCities = INITIAL_CITIES.filter((city) => city.active).map((city) => ({
+      ...city,
+      neighborhoods: [...city.neighborhoods],
+    }));
+    const now = Date.now();
+    const publicListings = INITIAL_LISTINGS.filter(
+      (listing) =>
+        listing.status === 'approved' &&
+        (!listing.expiresAt || new Date(listing.expiresAt).getTime() > now)
+    ).sort(
+      (a, b) =>
+        Number(b.isPriority) - Number(a.isPriority) ||
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return {
+      isDbSeeded: true,
+      cities: mappedCities,
+      categories: INITIAL_CATEGORIES.filter((category) => category.active !== false).map(
+        (category) => ({ ...category, active: true })
+      ),
+      settings: { ...INITIAL_SETTINGS, cities: mappedCities },
+      publicListings,
+      publicSellers: INITIAL_USERS.filter((user) => user.role === 'seller').map((user) => ({
+        ...user,
+        email: '',
+        phone: '',
+        whatsapp: '',
+        password: undefined,
+      })),
+      currentUser: null,
+      myListings: [],
+      myFavorites: [],
+      myNotifications: [],
+      myTransactions: [],
+      myReports: [],
+      adminData: null,
+    };
+  }
   return dbWrap('getBootstrapData', async () => {
     await seedInitialDatabase(false);
 
@@ -452,7 +522,7 @@ export async function getBootstrapData(uid?: string, isAdmin = false) {
           .select()
           .from(listings)
           .where(eq(listings.status, 'approved'))
-          .orderBy(desc(listings.createdAt)),
+          .orderBy(desc(listings.isPriority), desc(listings.createdAt)),
         db.select().from(users).where(eq(users.role, 'seller')),
       ]);
 
@@ -547,12 +617,17 @@ export async function getBootstrapData(uid?: string, isAdmin = false) {
       };
     }
 
+    const nowMs = Date.now();
+    const activePublicListings = publicListingRows
+      .filter((row) => !row.expiresAt || row.expiresAt.getTime() > nowMs)
+      .map(mapListingRow);
+
     return {
       isDbSeeded: settingRows.length > 0,
       cities: mappedCities,
       categories: mappedCategories,
       settings: mappedSettings,
-      publicListings: publicListingRows.map(mapListingRow),
+      publicListings: activePublicListings,
       publicSellers: sellerRows.map((u) => mapUserRow(u, false)),
       currentUser,
       myListings,
@@ -654,6 +729,169 @@ export async function upsertRegisteredUser(input: {
       .returning();
 
     return mapUserRow(result[0], true);
+  });
+}
+
+const configuredAdminPassword = process.env.ADMIN_PORTAL_PASSWORD;
+
+const normalizeDigits = (val: string): string => val.replace(/\D/g, '');
+
+const phonesMatch = (a: string, b: string): boolean => {
+  const da = normalizeDigits(a);
+  const dbDigits = normalizeDigits(b);
+  if (da.length < 8 || dbDigits.length < 8) return false;
+  return da === dbDigits || da.endsWith(dbDigits) || dbDigits.endsWith(da);
+};
+
+export async function registerWithCredentialsRecord(input: {
+  identifier: string;
+  password: string;
+  name: string;
+  businessName?: string;
+  email?: string;
+  phone: string;
+  whatsapp: string;
+  role: 'buyer' | 'seller';
+  city: string;
+  neighborhood: string;
+  avatarUrl: string;
+}): Promise<UserProfile> {
+  if (isSupabaseConfigured()) {
+    return registerWithCredentialsRecordSupabase(input);
+  }
+  return dbWrap('registerWithCredentialsRecord', async () => {
+    const cleanIdent = input.identifier.trim().toLowerCase();
+    const cleanEmail = (
+      input.email ||
+      (cleanIdent.includes('@') ? cleanIdent : `${cleanIdent.replace(/[^a-z0-9._-]/g, '_')}@djibouamarket.ci`)
+    )
+      .trim()
+      .toLowerCase();
+
+    const existingRows = await db.select().from(users);
+    const conflict = existingRows.find((u) => {
+      if (!u.passwordHash) return false;
+      if (u.username && u.username.toLowerCase() === cleanIdent) return true;
+      if (cleanIdent.includes('@') && u.email.toLowerCase() === cleanIdent) return true;
+      if (phonesMatch(u.phone, input.identifier) || phonesMatch(u.phone, input.phone)) return true;
+      return false;
+    });
+
+    if (conflict) {
+      throw new Error('Un compte existe déjà avec cet identifiant ou ce numéro de téléphone.');
+    }
+
+    const uid = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const passwordHash = hashPassword(input.password);
+
+    const inserted = await db
+      .insert(users)
+      .values({
+        id: uid,
+        uid,
+        username: cleanIdent,
+        passwordHash,
+        name: input.name,
+        businessName: input.businessName || null,
+        email: cleanEmail,
+        phone: input.phone,
+        whatsapp: input.whatsapp,
+        role: input.role,
+        city: input.city,
+        neighborhood: input.neighborhood,
+        avatarUrl: input.avatarUrl,
+        status: 'active',
+        rating: 5.0,
+      })
+      .returning();
+
+    return mapUserRow(inserted[0], true);
+  });
+}
+
+export async function loginWithCredentialsRecord(
+  identifier: string,
+  password: string
+): Promise<UserProfile> {
+  if (isSupabaseConfigured()) {
+    return loginWithCredentialsRecordSupabase(identifier, password);
+  }
+  return dbWrap('loginWithCredentialsRecord', async () => {
+    const cleanIdent = identifier.trim().toLowerCase();
+    const allUsers = await db.select().from(users);
+    const matched = allUsers.find((u) => {
+      if (!u.passwordHash) return false;
+      if (u.username && u.username.toLowerCase() === cleanIdent) return true;
+      if (u.email && u.email.toLowerCase() === cleanIdent) return true;
+      if (phonesMatch(u.phone, cleanIdent) || phonesMatch(u.whatsapp, cleanIdent)) return true;
+      return false;
+    });
+
+    if (!matched || !matched.passwordHash || !verifyPassword(password, matched.passwordHash)) {
+      throw new Error('Identifiant ou mot de passe incorrect.');
+    }
+    if (matched.status !== 'active') {
+      throw new Error("Ce compte est actuellement suspendu par l'administration.");
+    }
+    return mapUserRow(matched, true);
+  });
+}
+
+export async function verifyAdminCredentialsRecord(
+  login: string,
+  password: string
+): Promise<boolean> {
+  if (isSupabaseConfigured()) {
+    return verifyAdminCredentialsRecordSupabase(login, password);
+  }
+  return dbWrap('verifyAdminCredentialsRecord', async () => {
+    const cleanLogin = login.trim().toLowerCase();
+    if (cleanLogin !== 'adminlokoda' && cleanLogin !== 'federationopareko@gmail.com') {
+      return false;
+    }
+    const rows = await db.select().from(users).where(eq(users.id, 'admin_lokoda'));
+    const adminRow = rows[0];
+    if (adminRow?.passwordHash) {
+      return verifyPassword(password, adminRow.passwordHash);
+    }
+    return Boolean(configuredAdminPassword && password === configuredAdminPassword);
+  });
+}
+
+export async function updateAdminPasswordRecord(
+  oldPassword: string,
+  newPassword: string
+): Promise<boolean> {
+  if (isSupabaseConfigured()) {
+    return updateAdminPasswordRecordSupabase(oldPassword, newPassword);
+  }
+  return dbWrap('updateAdminPasswordRecord', async () => {
+    const valid = await verifyAdminCredentialsRecord('adminlokoda', oldPassword);
+    if (!valid) return false;
+    const newHash = hashPassword(newPassword);
+    await db
+      .insert(users)
+      .values({
+        id: 'admin_lokoda',
+        uid: 'admin_lokoda',
+        username: 'adminlokoda',
+        passwordHash: newHash,
+        name: 'Administrateur DJIBOUA MARKET',
+        email: 'federationopareko@gmail.com',
+        phone: '+225 2724529562',
+        whatsapp: '0777733284',
+        role: 'admin',
+        city: 'Divo',
+        neighborhood: 'Plateau',
+        avatarUrl: '',
+        status: 'active',
+        rating: 5.0,
+      })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: { passwordHash: newHash },
+      });
+    return true;
   });
 }
 

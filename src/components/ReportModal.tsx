@@ -19,7 +19,7 @@ const REPORT_REASONS: { id: ReportReason; label: string }[] = [
 ];
 
 export const ReportModal: React.FC<ReportModalProps> = ({ listing, onClose }) => {
-  const { submitReport, currentUser, firebaseUser, firestoreListingIds } = useMarket();
+  const { submitReport, currentUser, firebaseUser, isLoggedIn, firestoreListingIds } = useMarket();
 
   const [reason, setReason] = useState<ReportReason>('arnaque');
   const [comment, setComment] = useState('');
@@ -105,9 +105,9 @@ export const ReportModal: React.FC<ReportModalProps> = ({ listing, onClose }) =>
                 {error}
               </div>
             )}
-            {!firebaseUser && (
+            {!firebaseUser && !isLoggedIn && (
               <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-[11px]">
-                Une vérification Google rapide sera demandée lors de l'envoi pour éviter les faux signalements.
+                Une connexion à votre compte sera demandée lors de l'envoi pour éviter les faux signalements.
               </div>
             )}
             <div>

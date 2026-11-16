@@ -21,9 +21,12 @@ import {
   Truck,
   Loader2,
   Upload,
+  FileText,
+  CalendarClock,
+  Star,
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
-import { Listing } from '../types';
+import { LISTING_DURATIONS, Listing } from '../types';
 import { compressImageFile } from '../utils/imageCompression';
 
 interface VendorDashboardProps {
@@ -49,10 +52,14 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     listings,
     transactions,
     deleteListing,
+    uploadListingPaymentReceipt,
+    settings,
     cities,
     logoutUser,
     setCurrentView,
   } = useMarket();
+
+  const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
     'all' | 'pending' | 'approved' | 'rejected' | 'orders' | 'purchases'
@@ -207,6 +214,52 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       setConfirmDeleteId(null);
     } catch {
       setActionError("Erreur lors de la suppression de l'annonce.");
+    }
+  };
+
+  const handleReceiptUpload = async (
+    listingId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setActionError(null);
+    setAvatarSuccess(null);
+
+    if (file.size > 10 * 1024 * 1024) {
+      setActionError('Le fichier sélectionné est trop volumineux (maximum 10 Mo).');
+      return;
+    }
+
+    setUploadingReceiptId(listingId);
+    try {
+      let dataUrl = '';
+      if (file.type.startsWith('image/')) {
+        dataUrl = await compressImageFile(file, 900, 180000);
+      } else {
+        if (file.size > 240 * 1024) {
+          setActionError(
+            'Pour les fichiers PDF/documents, la taille maximale est de 240 Ko. Préférez une capture photo.'
+          );
+          return;
+        }
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(new Error('Impossible de lire le fichier.'));
+          reader.readAsDataURL(file);
+        });
+      }
+      await uploadListingPaymentReceipt(listingId, dataUrl, file.name);
+      setAvatarSuccess('Capture du reçu enregistrée ! Vous pouvez maintenant l’envoyer sur WhatsApp Admin.');
+      setTimeout(() => setAvatarSuccess(null), 4000);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Erreur lors de l'envoi de la capture du reçu."
+      );
+    } finally {
+      setUploadingReceiptId(null);
     }
   };
 
@@ -891,92 +944,179 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {displayedListings.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => onOpenListingDetail(item)}
-                className="border border-slate-200 rounded-2xl p-4 flex gap-3.5 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer bg-white group"
-              >
-                <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                  <img src={item.photos[0]} alt="" className="w-full h-full object-cover" />
-                  <span
-                    className={`absolute top-1 left-1 text-[9px] font-black uppercase px-1.5 py-0.2 rounded text-white ${
-                      item.status === 'approved'
-                        ? 'bg-emerald-600'
-                        : item.status === 'pending'
-                          ? 'bg-amber-500'
-                          : 'bg-red-600'
-                    }`}
+            {displayedListings.map((item) => {
+              const durationInfo = LISTING_DURATIONS.find((d) => d.days === item.durationDays);
+              const isExpired = Boolean(
+                item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now()
+              );
+              const adminWaDigits = formatWhatsAppNumber(settings.contactWhatsApp || '0777733284');
+              const adminWaMsg = encodeURIComponent(
+                `Bonjour Administrateur DJIBOUA MARKET,\n` +
+                  `Voici le reçu de paiement pour mon annonce "${item.title}" (Réf: ${item.id}) à ${item.price.toLocaleString('fr-FR')} FCFA (${item.city}).\n` +
+                  `Vendeur : ${item.sellerName} (${item.sellerPhone}).` +
+                  (item.paymentReceiptName ? `\nFichier joint sur la plateforme : ${item.paymentReceiptName}` : '')
+              );
+              const adminWaHref = `https://wa.me/${adminWaDigits}?text=${adminWaMsg}`;
+
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => onOpenListingDetail(item)}
+                  className={`border rounded-2xl p-4 flex flex-col gap-3 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer bg-white group ${
+                    item.isPriority ? 'border-amber-400 ring-1 ring-amber-200' : 'border-slate-200'
+                  }`}
+                >
+                  <div className="flex gap-3.5">
+                    <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                      <img src={item.photos[0]} alt="" className="w-full h-full object-cover" />
+                      <span
+                        className={`absolute top-1 left-1 text-[9px] font-black uppercase px-1.5 py-0.2 rounded text-white ${
+                          item.status === 'approved'
+                            ? 'bg-emerald-600'
+                            : item.status === 'pending'
+                              ? 'bg-amber-500'
+                              : 'bg-red-600'
+                        }`}
+                      >
+                        {item.status === 'approved'
+                          ? 'En ligne'
+                          : item.status === 'pending'
+                            ? 'Examen'
+                            : 'Refusée'}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className="text-sm font-black text-amber-600">
+                            {item.price.toLocaleString('fr-FR')} FCFA
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+                          </span>
+                        </div>
+
+                        <h4 className="text-xs font-bold text-slate-800 line-clamp-1 group-hover:text-blue-700 transition">
+                          {item.title}
+                        </h4>
+
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-blue-600" />
+                          <span>
+                            {item.city} • {item.neighborhood}
+                          </span>
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          {item.isPriority && (
+                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-black">
+                              <Star className="w-3 h-3 fill-amber-500 text-amber-600" />
+                              <span>Prioritaire</span>
+                            </span>
+                          )}
+                          {durationInfo && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                isExpired
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-blue-50 text-blue-800'
+                              }`}
+                            >
+                              <CalendarClock className="w-3 h-3" />
+                              <span>
+                                {isExpired
+                                  ? `Expirée (${durationInfo.label})`
+                                  : `Durée: ${durationInfo.label}${item.expiresAt ? ` • Fin ${new Date(item.expiresAt).toLocaleDateString('fr-FR')}` : ''}`}
+                              </span>
+                            </span>
+                          )}
+                          {item.paymentReceiptUrl && (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Reçu joint</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {item.rejectionReason && (
+                          <p className="text-[10px] text-red-600 font-semibold mt-1 bg-red-50 p-1 rounded">
+                            Motif : {item.rejectionReason}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center gap-1" title="Vues">
+                            <Eye className="w-3 h-3" />
+                            <span>{item.viewsCount}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-blue-700" title="Appels reçus">
+                            <Phone className="w-3 h-3" />
+                            <span>{item.callClicksCount}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-emerald-700" title="WhatsApp reçus">
+                            <MessageCircle className="w-3 h-3" />
+                            <span>{item.whatsappClicksCount}</span>
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleDelete(item.id, e)}
+                          className={`px-2 py-1 rounded transition text-[11px] font-bold flex items-center gap-1 ${
+                            confirmDeleteId === item.id
+                              ? 'bg-red-600 text-white'
+                              : 'text-slate-400 hover:text-red-600'
+                          }`}
+                          title="Supprimer mon annonce"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          {confirmDeleteId === item.id && <span>Confirmer</span>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seller Payment Receipt Upload + Send to Admin WhatsApp */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px]"
                   >
-                    {item.status === 'approved'
-                      ? 'En ligne'
-                      : item.status === 'pending'
-                        ? 'Examen'
-                        : 'Refusée'}
-                  </span>
-                </div>
-
-                <div className="flex-1 min-w-0 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-sm font-black text-amber-600">
-                        {item.price.toLocaleString('fr-FR')} FCFA
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {new Date(item.createdAt).toLocaleDateString('fr-FR')}
-                      </span>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-slate-800 line-clamp-1 group-hover:text-blue-700 transition">
-                      {item.title}
-                    </h4>
-
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3 h-3 text-blue-600" />
+                    <label className="px-2.5 py-1.5 bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-800 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition">
+                      {uploadingReceiptId === item.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-700" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5 text-blue-700" />
+                      )}
                       <span>
-                        {item.city} • {item.neighborhood}
+                        {uploadingReceiptId === item.id
+                          ? 'Enregistrement...'
+                          : item.paymentReceiptUrl
+                            ? 'Changer capture reçu'
+                            : 'Joindre reçu paiement'}
                       </span>
-                    </p>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf,.pdf"
+                        onChange={(e) => void handleReceiptUpload(item.id, e)}
+                        className="hidden"
+                      />
+                    </label>
 
-                    {item.rejectionReason && (
-                      <p className="text-[10px] text-red-600 font-semibold mt-1 bg-red-50 p-1 rounded">
-                        Motif : {item.rejectionReason}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1" title="Vues">
-                        <Eye className="w-3 h-3" />
-                        <span>{item.viewsCount}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-blue-700" title="Appels reçus">
-                        <Phone className="w-3 h-3" />
-                        <span>{item.callClicksCount}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-emerald-700" title="WhatsApp reçus">
-                        <MessageCircle className="w-3 h-3" />
-                        <span>{item.whatsappClicksCount}</span>
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleDelete(item.id, e)}
-                      className={`px-2 py-1 rounded transition text-[11px] font-bold flex items-center gap-1 ${
-                        confirmDeleteId === item.id
-                          ? 'bg-red-600 text-white'
-                          : 'text-slate-400 hover:text-red-600'
-                      }`}
-                      title="Supprimer mon annonce"
+                    <a
+                      href={adminWaHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      {confirmDeleteId === item.id && <span>Confirmer</span>}
-                    </button>
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Envoyer reçu WhatsApp Admin</span>
+                    </a>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

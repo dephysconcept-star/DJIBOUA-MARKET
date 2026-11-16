@@ -26,7 +26,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { createTransaction, currentUser, firebaseUser, firestoreListingIds, cities } = useMarket();
+  const { createTransaction, currentUser, firebaseUser, isLoggedIn, firestoreListingIds, cities } = useMarket();
 
   const [paymentType, setPaymentType] = useState<'electronic' | 'direct'>('electronic');
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('wave');
@@ -141,9 +141,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <span>{payError}</span>
               </div>
             )}
-            {!firebaseUser && (
+            {!firebaseUser && !isLoggedIn && (
               <div className="p-2.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-[11px]">
-                Une confirmation Google rapide sera demandée lors de la validation pour sécuriser et archiver votre reçu dans la base de données.
+                Une connexion à votre compte (identifiant/mot de passe ou Google) est requise lors de la validation pour sécuriser et archiver votre reçu.
               </div>
             )}
             {/* Product Summary */}
