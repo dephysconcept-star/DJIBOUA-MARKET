@@ -30,22 +30,37 @@ import {
   Trash2,
   Upload,
   Eye,
-  EyeOff
+  EyeOff,
+  Star,
+  CalendarClock,
+  Receipt,
+  MessageCircle,
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 import { INITIAL_PROMO_BANNERS } from '../data/initialData';
 import { PromoBannerCarousel } from './PromoBannerCarousel';
-import { Listing, UserProfile, City, Category, PlatformSettings, PromoBannerSlide, PromoBannerTheme } from '../types';
+import {
+  LISTING_DURATIONS,
+  Listing,
+  UserProfile,
+  City,
+  Category,
+  PlatformSettings,
+  PromoBannerSlide,
+  PromoBannerTheme,
+} from '../types';
 
 export const AdminDashboard: React.FC = () => {
   const { 
     adminAuthenticated, 
-    verifyAdminCredentials, 
-    updateAdminPassword, 
+    loginAdmin,
+    updateAdminPasswordAsync,
     setAdminAuthenticated, 
     setCurrentView,
     listings,
     approveListing,
+    setListingPriority,
+    setListingDuration,
     rejectListing,
     suspendListing,
     users,
@@ -62,11 +77,9 @@ export const AdminDashboard: React.FC = () => {
     updateSettings,
     adminLogs,
     resetPlatformData,
-    isFirebaseAdmin,
-    signInWithGoogle,
+    isAdminAuthorized,
     seedFirestoreData,
     isDbSeeded,
-    firebaseUser,
   } = useMarket();
 
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'seller' | 'buyer' | 'admin'>('all');
@@ -76,20 +89,11 @@ export const AdminDashboard: React.FC = () => {
   const [dbActionMessage, setDbActionMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const handleConnectAdminCloud = async () => {
-    setDbActionMessage(null);
-    try {
-      await signInWithGoogle();
-      setDbActionMessage({ type: 'ok', text: 'Session administrateur vérifiée et synchronisée.' });
-    } catch {
-      setDbActionMessage({ type: 'err', text: 'Connexion Google administrateur annulée ou refusée.' });
-    }
-  };
-
   // Login Form State (never prefill or expose credentials in DOM)
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Password Update Modal / Form
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -97,6 +101,7 @@ export const AdminDashboard: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState('');
   const [passwordChangeError, setPasswordChangeError] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<
@@ -109,12 +114,20 @@ export const AdminDashboard: React.FC = () => {
   );
   const [isSavingBanners, setIsSavingBanners] = useState(false);
   const [bannerStatusMsg, setBannerStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [adminWhatsAppDraft, setAdminWhatsAppDraft] = useState(() => settings.contactWhatsApp || '0777733284');
+  const [receiptModalListing, setReceiptModalListing] = useState<Listing | null>(null);
 
   React.useEffect(() => {
     if (settings.promoBanners) {
       setDraftBanners(settings.promoBanners);
     }
   }, [settings.promoBanners]);
+
+  React.useEffect(() => {
+    if (settings.contactWhatsApp) {
+      setAdminWhatsAppDraft(settings.contactWhatsApp);
+    }
+  }, [settings.contactWhatsApp]);
 
   // Search & Filter state
   const [searchModQuery, setSearchModQuery] = useState('');
@@ -127,33 +140,44 @@ export const AdminDashboard: React.FC = () => {
   const [selectedCityForNeighborhood, setSelectedCityForNeighborhood] = useState(cities[0]?.id || 'divo');
   const [newNeighborhoodName, setNewNeighborhoodName] = useState('');
 
-  // Handles Login with Adminlokoda (case-insensitive)
-  const handleLogin = (e: React.FormEvent) => {
+  // Handles Login with Adminlokoda via server-signed HMAC admin session
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = verifyAdminCredentials(loginUsername, loginPassword);
-    if (ok) {
-      setLoginError('');
-      setLoginPassword('');
-    } else {
-      setLoginError('Identifiant ou mot de passe administrateur incorrect.');
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await loginAdmin(loginUsername, loginPassword);
+      if (res.ok) {
+        setLoginPassword('');
+      } else {
+        setLoginError(res.error || 'Identifiant ou mot de passe administrateur incorrect.');
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordChangeError('');
+    setPasswordChangeSuccess('');
     if (newPassword.length < 8) {
       setPasswordChangeError('Le nouveau mot de passe doit comporter au moins 8 caractères.');
       return;
     }
-    const success = updateAdminPassword(oldPassword, newPassword);
-    if (success) {
-      setPasswordChangeSuccess('Mot de passe administrateur mis à jour avec succès.');
-      setPasswordChangeError('');
-      setOldPassword('');
-      setNewPassword('');
-      setTimeout(() => setShowPasswordChange(false), 2000);
-    } else {
-      setPasswordChangeError('L\'ancien mot de passe fourni est incorrect.');
+    setIsUpdatingPassword(true);
+    try {
+      const res = await updateAdminPasswordAsync(oldPassword, newPassword);
+      if (res.ok) {
+        setPasswordChangeSuccess('Mot de passe administrateur mis à jour avec succès.');
+        setOldPassword('');
+        setNewPassword('');
+        setTimeout(() => setShowPasswordChange(false), 2000);
+      } else {
+        setPasswordChangeError(res.error || "L'ancien mot de passe fourni est incorrect.");
+      }
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -263,9 +287,10 @@ export const AdminDashboard: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-blue-950 font-black rounded-xl text-sm transition shadow-lg active:scale-95 mt-2"
+              disabled={isLoggingIn}
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-60 text-blue-950 font-black rounded-xl text-sm transition shadow-lg active:scale-95 mt-2"
             >
-              Déverrouiller le portail d'administration
+              {isLoggingIn ? 'Vérification sécurisée...' : "Déverrouiller le portail d'administration"}
             </button>
           </form>
 
@@ -460,26 +485,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {!isFirebaseAdmin && (
-          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-            <div className="text-xs text-amber-950 space-y-0.5">
-              <p className="font-black">Authentification Google administrateur requise pour enregistrer vos actions</p>
-              <p className="text-amber-800">
-                {firebaseUser
-                  ? `Compte connecté (${firebaseUser.email}) non autorisé comme administrateur. Connectez-vous avec le compte administrateur Google pour sauvegarder vos modérations.`
-                  : 'Connectez votre compte Google administrateur pour lire les annonces en attente, les signalements et enregistrer vos modifications.'}
-              </p>
-            </div>
-            <button
-              onClick={handleConnectAdminCloud}
-              className="px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl text-xs shrink-0 shadow"
-            >
-              Connecter Google Admin
-            </button>
-          </div>
-        )}
-
-        {isFirebaseAdmin && !isDbSeeded && (
+        {isAdminAuthorized && !isDbSeeded && (
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-blue-950 font-semibold">
               Plateforme prête. Cliquez pour synchroniser les villes, catégories et annonces initiales si nécessaire.
@@ -551,9 +557,10 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex items-end">
                 <button
                   type="submit"
-                  className="w-full py-2 bg-blue-900 text-white font-bold rounded-xl hover:bg-blue-950 transition"
+                  disabled={isUpdatingPassword}
+                  className="w-full py-2 bg-blue-900 text-white font-bold rounded-xl hover:bg-blue-950 disabled:opacity-60 transition"
                 >
-                  Sauvegarder le nouveau mot de passe
+                  {isUpdatingPassword ? 'Enregistrement...' : 'Sauvegarder le nouveau mot de passe'}
                 </button>
               </div>
             </form>
@@ -836,84 +843,223 @@ export const AdminDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredModerationListings.map(listing => (
-                  <div
-                    key={listing.id}
-                    className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 items-start justify-between"
-                  >
-                    <div className="flex gap-4 min-w-0">
-                      <img
-                        src={listing.photos[0]}
-                        alt=""
-                        className="w-24 h-24 rounded-xl object-cover shrink-0 border border-slate-200 bg-slate-100"
-                      />
-                      <div className="space-y-1 text-xs">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase text-white ${
-                            listing.status === 'approved' ? 'bg-emerald-600' : listing.status === 'pending' ? 'bg-amber-500' : 'bg-red-600'
-                          }`}>
-                            {listing.status}
-                          </span>
-                          <span className="font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
-                            📍 {listing.city} • {listing.neighborhood}
-                          </span>
-                          <span className="text-slate-400">
-                            {new Date(listing.createdAt).toLocaleString('fr-FR')}
-                          </span>
-                        </div>
+                {filteredModerationListings.map(listing => {
+                  const durationInfo = LISTING_DURATIONS.find(
+                    (d) => d.days === listing.durationDays
+                  );
+                  const isExpired = Boolean(
+                    listing.expiresAt && new Date(listing.expiresAt).getTime() <= Date.now()
+                  );
 
-                        <h4 className="font-bold text-sm text-slate-900">{listing.title}</h4>
+                  return (
+                    <div
+                      key={listing.id}
+                      className={`bg-white p-4 rounded-2xl border shadow-xs flex flex-col md:flex-row gap-4 items-start justify-between ${
+                        listing.isPriority ? 'border-amber-400 ring-1 ring-amber-200' : 'border-slate-200'
+                      }`}
+                    >
+                      <div className="flex gap-4 min-w-0 flex-1">
+                        <img
+                          src={listing.photos[0]}
+                          alt=""
+                          className="w-24 h-24 rounded-xl object-cover shrink-0 border border-slate-200 bg-slate-100"
+                        />
+                        <div className="space-y-1.5 text-xs min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase text-white ${
+                              listing.status === 'approved' ? 'bg-emerald-600' : listing.status === 'pending' ? 'bg-amber-500' : 'bg-red-600'
+                            }`}>
+                              {listing.status}
+                            </span>
+                            {listing.isPriority && (
+                              <span className="bg-amber-400 text-blue-950 px-2 py-0.5 rounded text-[10px] font-black uppercase">
+                                ★ Prioritaire
+                              </span>
+                            )}
+                            {durationInfo && (
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
+                                  isExpired
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-indigo-50 text-indigo-800'
+                                }`}
+                              >
+                                <CalendarClock className="w-3 h-3" />
+                                <span>
+                                  {isExpired
+                                    ? `Expirée (${durationInfo.label})`
+                                    : `Durée: ${durationInfo.label}${listing.expiresAt ? ` • Jusqu'au ${new Date(listing.expiresAt).toLocaleDateString('fr-FR')}` : ''}`}
+                                </span>
+                              </span>
+                            )}
+                            <span className="font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
+                              📍 {listing.city} • {listing.neighborhood}
+                            </span>
+                            <span className="text-slate-400">
+                              {new Date(listing.createdAt).toLocaleString('fr-FR')}
+                            </span>
+                          </div>
 
-                        <div className="text-amber-600 font-black text-sm">
-                          {listing.price.toLocaleString('fr-FR')} FCFA • <span className="text-slate-500 text-xs font-normal">État: {listing.condition}</span>
-                        </div>
+                          <h4 className="font-bold text-sm text-slate-900">{listing.title}</h4>
 
-                        <p className="text-slate-600 line-clamp-2 max-w-xl">
-                          {listing.description}
-                        </p>
+                          <div className="text-amber-600 font-black text-sm">
+                            {listing.price.toLocaleString('fr-FR')} FCFA • <span className="text-slate-500 text-xs font-normal">État: {listing.condition}</span>
+                          </div>
 
-                        <div className="text-[11px] text-slate-500 pt-1">
-                          Vendeur : <strong>{listing.sellerName}</strong> • Tél: {listing.sellerPhone} • WA: {listing.sellerWhatsApp}
+                          <p className="text-slate-600 line-clamp-2 max-w-xl">
+                            {listing.description}
+                          </p>
+
+                          <div className="text-[11px] text-slate-500 pt-0.5">
+                            Vendeur : <strong>{listing.sellerName}</strong> • Tél: {listing.sellerPhone} • WA: {listing.sellerWhatsApp}
+                          </div>
+
+                          {listing.paymentReceiptUrl && (
+                            <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-2 max-w-xl">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {listing.paymentReceiptUrl.startsWith('data:image/') ? (
+                                  <img
+                                    src={listing.paymentReceiptUrl}
+                                    alt="Reçu vendeur"
+                                    className="w-10 h-10 rounded-lg object-cover border border-emerald-300 shrink-0 cursor-pointer"
+                                    onClick={() => setReceiptModalListing(listing)}
+                                  />
+                                ) : (
+                                  <Receipt className="w-5 h-5 text-emerald-700 shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-bold text-emerald-900 truncate">
+                                    Reçu de paiement joint : {listing.paymentReceiptName || 'capture'}
+                                  </div>
+                                  {listing.paymentReceiptSentAt && (
+                                    <div className="text-[10px] text-emerald-700">
+                                      Envoyé le {new Date(listing.paymentReceiptSentAt).toLocaleString('fr-FR')}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setReceiptModalListing(listing)}
+                                  className="px-2.5 py-1 bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-900 rounded-lg text-[11px] font-bold"
+                                >
+                                  Voir la capture
+                                </button>
+                                <a
+                                  href={listing.paymentReceiptUrl}
+                                  download={listing.paymentReceiptName || `recu_${listing.id}`}
+                                  className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold"
+                                >
+                                  Télécharger
+                                </a>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
 
-                    {/* Moderation Actions */}
-                    <div className="flex flex-col gap-2 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                      {listing.status !== 'approved' && (
+                      {/* Moderation Actions: Priority, Duration, Approve, Reject */}
+                      <div className="flex flex-col gap-2 w-full md:w-64 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 text-xs">
+                        {/* Priority Toggle */}
                         <button
-                          onClick={() => approveListing(listing.id)}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await setListingPriority(listing.id, !listing.isPriority);
+                            } catch (err) {
+                              setDbActionMessage({
+                                type: 'err',
+                                text: err instanceof Error ? err.message : 'Erreur priorité',
+                              });
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center justify-center gap-1.5 border ${
+                            listing.isPriority
+                              ? 'bg-amber-400 hover:bg-amber-500 text-blue-950 border-amber-500'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                          }`}
                         >
-                          <Check className="w-4 h-4" />
-                          <span>Approuver & Mettre en ligne</span>
+                          <Star className={`w-3.5 h-3.5 ${listing.isPriority ? 'fill-blue-950' : ''}`} />
+                          <span>{listing.isPriority ? 'Retirer Prioritaire' : 'Mettre Prioritaire'}</span>
                         </button>
-                      )}
 
-                      {listing.status !== 'rejected' && (
-                        <div className="flex flex-col gap-1">
-                          <input
-                            type="text"
-                            placeholder="Motif de refus..."
-                            value={rejectReasonInput[listing.id] || ''}
-                            onChange={(e) => setRejectReasonInput({ ...rejectReasonInput, [listing.id]: e.target.value })}
-                            className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg"
-                          />
-                          <button
-                            onClick={() => {
-                              const reason = rejectReasonInput[listing.id] || 'Non conforme aux règles de publication DJIBOUA MARKET';
-                              rejectListing(listing.id, reason);
+                        {/* Duration Selector */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600 uppercase flex items-center gap-1">
+                            <CalendarClock className="w-3 h-3 text-blue-700" />
+                            <span>Durée d'affichage</span>
+                          </label>
+                          <select
+                            value={listing.durationDays ?? ''}
+                            onChange={async (e) => {
+                              const val = e.target.value ? Number(e.target.value) : null;
+                              try {
+                                await setListingDuration(listing.id, val);
+                                setDbActionMessage({
+                                  type: 'ok',
+                                  text: val
+                                    ? `Durée définie à ${LISTING_DURATIONS.find((d) => d.days === val)?.label} pour "${listing.title}".`
+                                    : `Durée illimitée rétablie pour "${listing.title}".`,
+                                });
+                              } catch (err) {
+                                setDbActionMessage({
+                                  type: 'err',
+                                  text: err instanceof Error ? err.message : 'Erreur durée',
+                                });
+                              }
                             }}
-                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                           >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Refuser l'annonce</span>
-                          </button>
+                            <option value="">Illimitée (sans expiration)</option>
+                            {LISTING_DURATIONS.map((d) => (
+                              <option key={d.days} value={d.days}>
+                                {d.label} ({d.days} jours)
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      )}
+
+                        {listing.status !== 'approved' && (
+                          <button
+                            onClick={() =>
+                              approveListing(listing.id, {
+                                durationDays: listing.durationDays ?? null,
+                                isPriority: listing.isPriority,
+                              })
+                            }
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <Check className="w-4 h-4" />
+                            <span>Approuver & Mettre en ligne</span>
+                          </button>
+                        )}
+
+                        {listing.status !== 'rejected' && (
+                          <div className="flex flex-col gap-1">
+                            <input
+                              type="text"
+                              placeholder="Motif de refus..."
+                              value={rejectReasonInput[listing.id] || ''}
+                              onChange={(e) => setRejectReasonInput({ ...rejectReasonInput, [listing.id]: e.target.value })}
+                              className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg"
+                            />
+                            <button
+                              onClick={() => {
+                                const reason = rejectReasonInput[listing.id] || 'Non conforme aux règles de publication DJIBOUA MARKET';
+                                rejectListing(listing.id, reason);
+                              }}
+                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Refuser l'annonce</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1531,7 +1677,7 @@ export const AdminDashboard: React.FC = () => {
                 text:
                   err instanceof Error
                     ? err.message
-                    : "Erreur lors de l'enregistrement. Vérifiez votre connexion Google Admin.",
+                    : "Erreur lors de l'enregistrement. Vérifiez votre session administrateur.",
               });
             } finally {
               setIsSavingBanners(false);
@@ -1944,7 +2090,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               {/* Question 3: Taux de commission */}
-              <div className="space-y-2">
+              <div className="space-y-2 pb-4 border-b border-slate-100">
                 <label className="font-bold text-slate-800 text-sm block">
                   3. Commission sur Paiement Électronique (Section 22.3)
                 </label>
@@ -1962,6 +2108,41 @@ export const AdminDashboard: React.FC = () => {
                     className="w-24 px-3 py-2 border border-slate-300 rounded-xl font-bold"
                   />
                   <span className="font-bold text-slate-700">% de commission par transaction</span>
+                </div>
+              </div>
+
+              {/* Question 4: Admin WhatsApp number for seller payment receipts */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                  <MessageCircle className="w-4 h-4 text-emerald-600" />
+                  <span>4. Numéro WhatsApp Administrateur (Réception des reçus de paiement)</span>
+                </label>
+                <p className="text-slate-500">
+                  Les vendeurs enverront leurs captures de reçus de paiement à ce numéro WhatsApp après soumission d'annonce.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <input
+                    type="tel"
+                    maxLength={40}
+                    placeholder="Ex: 0777733284"
+                    value={adminWhatsAppDraft}
+                    onChange={(e) => setAdminWhatsAppDraft(e.target.value)}
+                    className="w-56 px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!adminWhatsAppDraft.trim()) return;
+                      await updateSettings({ contactWhatsApp: adminWhatsAppDraft.trim() });
+                      setDbActionMessage({
+                        type: 'ok',
+                        text: `Numéro WhatsApp administrateur mis à jour : ${adminWhatsAppDraft.trim()}`,
+                      });
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition"
+                  >
+                    Enregistrer le numéro WhatsApp
+                  </button>
                 </div>
               </div>
 
@@ -2030,6 +2211,72 @@ export const AdminDashboard: React.FC = () => {
         )}
 
       </main>
+
+      {/* Payment Receipt Preview Modal */}
+      {receiptModalListing && receiptModalListing.paymentReceiptUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setReceiptModalListing(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-3.5 bg-blue-950 text-white flex items-center justify-between">
+              <div className="min-w-0">
+                <h4 className="font-bold text-sm truncate">
+                  Reçu de paiement • {receiptModalListing.title}
+                </h4>
+                <p className="text-[11px] text-blue-200">
+                  Vendeur : {receiptModalListing.sellerName} ({receiptModalListing.sellerPhone})
+                </p>
+              </div>
+              <button
+                onClick={() => setReceiptModalListing(null)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-blue-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {receiptModalListing.paymentReceiptUrl.startsWith('data:image/') ? (
+                <img
+                  src={receiptModalListing.paymentReceiptUrl}
+                  alt="Capture du reçu de paiement"
+                  className="w-full max-h-[65vh] object-contain rounded-xl border border-slate-200 bg-slate-50"
+                />
+              ) : (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <Receipt className="w-10 h-10 text-emerald-600 mx-auto" />
+                  <p className="text-sm font-bold text-slate-900">
+                    {receiptModalListing.paymentReceiptName || 'Document reçu de paiement'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Cliquez ci-dessous pour télécharger et ouvrir ce fichier reçu.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <a
+                  href={receiptModalListing.paymentReceiptUrl}
+                  download={receiptModalListing.paymentReceiptName || `recu_${receiptModalListing.id}`}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Télécharger le reçu</span>
+                </a>
+                <button
+                  onClick={() => setReceiptModalListing(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

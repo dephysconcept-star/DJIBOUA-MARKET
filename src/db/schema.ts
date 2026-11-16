@@ -46,7 +46,9 @@ export const settings = pgTable('settings', {
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
-  uid: text('uid').notNull().unique(), // Firebase Auth UID
+  uid: text('uid').notNull().unique(), // Firebase Auth UID or local user ID
+  username: text('username'), // Normalized login identifier (email/phone/pseudo)
+  passwordHash: text('password_hash'), // Salted scrypt hash (never exposed to client)
   name: text('name').notNull(),
   businessName: text('business_name'),
   email: text('email').notNull(),
@@ -92,6 +94,12 @@ export const listings = pgTable('listings', {
   whatsappClicksCount: integer('whatsapp_clicks_count').notNull().default(0),
   featured: boolean('featured').default(false),
   popular: boolean('popular').default(false),
+  isPriority: boolean('is_priority').default(false),
+  durationDays: integer('duration_days'),
+  expiresAt: timestamp('expires_at'),
+  paymentReceiptUrl: text('payment_receipt_url'),
+  paymentReceiptName: text('payment_receipt_name'),
+  paymentReceiptSentAt: timestamp('payment_receipt_sent_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

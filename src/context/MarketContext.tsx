@@ -80,10 +80,11 @@ interface MarketContextType {
   firestoreListingIds: Set<string>;
   isDbSeeded: boolean;
 
-  // Firebase Auth & User
+  // Firebase Auth & Credential Auth & User
   firebaseUser: FirebaseUser | null;
   authReady: boolean;
   isFirebaseAdmin: boolean;
+  isAdminAuthorized: boolean;
   currentUser: UserProfile | null;
   isLoggedIn: boolean;
   signInWithGoogle: () => Promise<{
@@ -92,9 +93,23 @@ interface MarketContextType {
     profile: UserProfile | null;
   }>;
   loginUser: (
-    identifier: string,
+    identifier?: string,
     password?: string
   ) => Promise<{ success: boolean; message?: string; user?: UserProfile }>;
+  registerWithCredentials: (userData: {
+    identifier: string;
+    password: string;
+    name: string;
+    businessName?: string;
+    email?: string;
+    phone: string;
+    whatsapp: string;
+    city: string;
+    neighborhood: string;
+    avatarUrl?: string;
+    role?: UserRole;
+  }) => Promise<UserProfile>;
+  loginWithCredentials: (identifier: string, password: string) => Promise<UserProfile>;
   registerUser: (userData: {
     name: string;
     businessName?: string;
@@ -112,9 +127,11 @@ interface MarketContextType {
   adminAuthenticated: boolean;
   setAdminAuthenticated: (auth: boolean) => void;
   adminPasswordVerified: boolean;
-  verifyAdminPassword: (password: string) => boolean;
-  verifyAdminCredentials: (login: string, password: string) => boolean;
-  updateAdminPassword: (oldPass: string, newPass: string) => boolean;
+  loginAdmin: (login: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  updateAdminPasswordAsync: (
+    oldPass: string,
+    newPass: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   seedFirestoreData: () => Promise<void>;
 
   // Filters & Search
@@ -145,7 +162,17 @@ interface MarketContextType {
   ) => Promise<Listing>;
   updateListing: (id: string, updates: Partial<Listing>) => Promise<void>;
   deleteListing: (id: string) => Promise<void>;
-  approveListing: (id: string) => Promise<void>;
+  approveListing: (
+    id: string,
+    options?: { durationDays?: number | null; isPriority?: boolean }
+  ) => Promise<void>;
+  setListingPriority: (id: string, isPriority: boolean) => Promise<void>;
+  setListingDuration: (id: string, durationDays: number | null) => Promise<void>;
+  uploadListingPaymentReceipt: (
+    id: string,
+    receiptUrl: string,
+    receiptName: string
+  ) => Promise<Listing>;
   rejectListing: (id: string, reason: string) => Promise<void>;
   suspendListing: (id: string, reason: string) => Promise<void>;
   trackListingView: (id: string) => Promise<void>;
@@ -183,6 +210,50 @@ interface MarketContextType {
 const MarketContext = createContext<MarketContextType | undefined>(undefined);
 
 const LOCAL_FAV_KEY = 'lokoda_market_visitor_favorites';
+const USER_TOKEN_KEY = 'djiboua_user_auth_token';
+const ADMIN_TOKEN_KEY = 'djiboua_admin_auth_token';
+
+function getStoredUserToken(): string | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage.getItem(USER_TOKEN_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredUserToken(token: string | null): void {
+  try {
+    if (typeof window === 'undefined') return;
+    if (token) {
+      window.localStorage.setItem(USER_TOKEN_KEY, token);
+    } else {
+      window.localStorage.removeItem(USER_TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getStoredAdminToken(): string | null {
+  try {
+    return typeof window !== 'undefined' ? window.sessionStorage.getItem(ADMIN_TOKEN_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredAdminToken(token: string | null): void {
+  try {
+    if (typeof window === 'undefined') return;
+    if (token) {
+      window.sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+    } else {
+      window.sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 async function apiFetch<T>(
   url: string,
@@ -197,6 +268,16 @@ async function apiFetch<T>(
   if (activeUser) {
     const token = await activeUser.getIdToken();
     headers.set('Authorization', `Bearer ${token}`);
+  } else {
+    const storedUserToken = getStoredUserToken();
+    if (storedUserToken) {
+      headers.set('Authorization', `Bearer ${storedUserToken}`);
+    }
+  }
+
+  const adminToken = getStoredAdminToken();
+  if (adminToken) {
+    headers.set('x-admin-token', adminToken);
   }
 
   const res = await fetch(url, { ...options, headers });
@@ -231,8 +312,11 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [checkoutListing, setCheckoutListing] = useState<Listing | null>(null);
   const [deviceMode, setDeviceMode] = useState<'web' | 'android'>('web');
 
-  // Firebase Auth State (token stored in Firebase Auth memory, never localStorage)
+  // Auth State (Firebase Auth + HMAC Session Tokens)
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [hasCredentialSession, setHasCredentialSession] = useState<boolean>(() =>
+    Boolean(getStoredUserToken())
+  );
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
@@ -241,6 +325,11 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       firebaseUser.emailVerified &&
       firebaseUser.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()
   );
+  const [adminAuthenticated, setAdminAuthenticatedState] = useState<boolean>(() =>
+    Boolean(getStoredAdminToken())
+  );
+  const isAdminAuthorized = Boolean(isFirebaseAdmin || adminAuthenticated);
+  const isUserAuthenticated = Boolean(firebaseUser || hasCredentialSession);
 
   // PostgreSQL Cloud SQL Hydrated State
   const [dbCities, setDbCities] = useState<City[]>([]);
@@ -275,9 +364,7 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   });
 
-  // Admin portal gate credentials (Adminlokoda / Denz@1209881430)
-  const [adminPasswordHash, setAdminPasswordHash] = useState<string>('Denz@1209881430');
-  const [adminAuthenticated, setAdminAuthenticated] = useState<boolean>(false);
+  // Admin portal gate state is initialized above via sessionStorage token
 
   // Filters
   const [selectedCity, setSelectedCity] = useState<string>('all');
@@ -308,47 +395,70 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const applyBootstrapPayload = useCallback((data: BootstrapPayload, activeFbUser: FirebaseUser | null) => {
-    setIsDbSeeded(Boolean(data.isDbSeeded));
-    setDbCities(Array.isArray(data.cities) ? data.cities : []);
-    setDbCategories(Array.isArray(data.categories) ? data.categories : []);
-    setDbSettings(data.settings || null);
-    setPublicListings(Array.isArray(data.publicListings) ? data.publicListings : []);
-    setPublicSellers(Array.isArray(data.publicSellers) ? data.publicSellers : []);
+  const applyBootstrapPayload = useCallback(
+    (data: BootstrapPayload, activeFbUser: FirebaseUser | null) => {
+      setIsDbSeeded(Boolean(data.isDbSeeded));
+      setDbCities(Array.isArray(data.cities) ? data.cities : []);
+      setDbCategories(Array.isArray(data.categories) ? data.categories : []);
+      setDbSettings(data.settings || null);
+      setPublicListings(Array.isArray(data.publicListings) ? data.publicListings : []);
+      setPublicSellers(Array.isArray(data.publicSellers) ? data.publicSellers : []);
 
-    if (activeFbUser) {
-      const profile = data.currentUser;
-      setCurrentUser(profile && profile.status === 'active' ? profile : null);
-      setMyListings(Array.isArray(data.myListings) ? data.myListings : []);
-      setDbFavorites(Array.isArray(data.myFavorites) ? data.myFavorites : []);
-      setMyNotifications(Array.isArray(data.myNotifications) ? data.myNotifications : []);
-      setMyTransactions(Array.isArray(data.myTransactions) ? data.myTransactions : []);
-      setMyReports(Array.isArray(data.myReports) ? data.myReports : []);
-    } else {
-      setCurrentUser(null);
-      setMyListings([]);
-      setDbFavorites([]);
-      setMyNotifications([]);
-      setMyTransactions([]);
-      setMyReports([]);
-    }
+      const storedUserTok = getStoredUserToken();
+      const hasUserAuth = Boolean(activeFbUser || storedUserTok);
 
-    if (data.adminData) {
-      setAdminAllListings(data.adminData.allListings || []);
-      setAdminAllUsers(data.adminData.allUsers || []);
-      setAdminAllTransactions(data.adminData.allTransactions || []);
-      setAdminAllReports(data.adminData.allReports || []);
-      setAdminAllNotifications(data.adminData.allNotifications || []);
-      setAdminLogs(data.adminData.adminLogs || []);
-    } else {
-      setAdminAllListings([]);
-      setAdminAllUsers([]);
-      setAdminAllTransactions([]);
-      setAdminAllReports([]);
-      setAdminAllNotifications([]);
-      setAdminLogs([]);
-    }
-  }, []);
+      if (hasUserAuth) {
+        const profile = data.currentUser;
+        if (!activeFbUser && !profile) {
+          // Stale or expired credential session token
+          setStoredUserToken(null);
+          setHasCredentialSession(false);
+          setCurrentUser(null);
+          setMyListings([]);
+          setDbFavorites([]);
+          setMyNotifications([]);
+          setMyTransactions([]);
+          setMyReports([]);
+        } else {
+          setCurrentUser(profile && profile.status === 'active' ? profile : null);
+          setMyListings(Array.isArray(data.myListings) ? data.myListings : []);
+          setDbFavorites(Array.isArray(data.myFavorites) ? data.myFavorites : []);
+          setMyNotifications(Array.isArray(data.myNotifications) ? data.myNotifications : []);
+          setMyTransactions(Array.isArray(data.myTransactions) ? data.myTransactions : []);
+          setMyReports(Array.isArray(data.myReports) ? data.myReports : []);
+        }
+      } else {
+        setCurrentUser(null);
+        setMyListings([]);
+        setDbFavorites([]);
+        setMyNotifications([]);
+        setMyTransactions([]);
+        setMyReports([]);
+      }
+
+      if (data.adminData) {
+        setAdminAllListings(data.adminData.allListings || []);
+        setAdminAllUsers(data.adminData.allUsers || []);
+        setAdminAllTransactions(data.adminData.allTransactions || []);
+        setAdminAllReports(data.adminData.allReports || []);
+        setAdminAllNotifications(data.adminData.allNotifications || []);
+        setAdminLogs(data.adminData.adminLogs || []);
+      } else {
+        if (getStoredAdminToken() && !activeFbUser) {
+          // Admin token expired or invalid
+          setStoredAdminToken(null);
+          setAdminAuthenticatedState(false);
+        }
+        setAdminAllListings([]);
+        setAdminAllUsers([]);
+        setAdminAllTransactions([]);
+        setAdminAllReports([]);
+        setAdminAllNotifications([]);
+        setAdminLogs([]);
+      }
+    },
+    []
+  );
 
   const refreshBootstrap = useCallback(
     async (fbUserOverride?: FirebaseUser | null) => {
@@ -393,13 +503,15 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     publicListings.forEach((l) => byId.set(l.id, l));
     myListings.forEach((l) => byId.set(l.id, l));
-    if (isFirebaseAdmin) {
+    if (isAdminAuthorized) {
       adminAllListings.forEach((l) => byId.set(l.id, l));
     }
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [dbSettings, publicListings, myListings, adminAllListings, isFirebaseAdmin]);
+    return Array.from(byId.values()).sort((a, b) => {
+      const pDiff = Number(Boolean(b.isPriority)) - Number(Boolean(a.isPriority));
+      if (pDiff !== 0) return pDiff;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [dbSettings, publicListings, myListings, adminAllListings, isAdminAuthorized]);
 
   const firestoreListingIds = useMemo<Set<string>>(() => {
     const set = new Set<string>();
@@ -409,7 +521,10 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const categories = useMemo<Category[]>(() => {
     const base = dbCategories.length > 0 ? dbCategories : INITIAL_CATEGORIES;
-    const approved = listings.filter((l) => l.status === 'approved');
+    const nowMs = Date.now();
+    const approved = listings.filter(
+      (l) => l.status === 'approved' && (!l.expiresAt || new Date(l.expiresAt).getTime() > nowMs)
+    );
     return base
       .map((cat) => ({
         ...cat,
@@ -424,32 +539,32 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       INITIAL_USERS.forEach((u) => byId.set(u.id, u));
     }
     publicSellers.forEach((u) => byId.set(u.id, u));
-    if (isFirebaseAdmin) {
+    if (isAdminAuthorized) {
       adminAllUsers.forEach((u) => byId.set(u.id, u));
     }
     if (currentUser) {
       byId.set(currentUser.id, currentUser);
     }
     return Array.from(byId.values());
-  }, [dbSettings, publicSellers, adminAllUsers, currentUser, isFirebaseAdmin]);
+  }, [dbSettings, publicSellers, adminAllUsers, currentUser, isAdminAuthorized]);
 
   const transactions = useMemo<Transaction[]>(() => {
-    const source = isFirebaseAdmin ? adminAllTransactions : myTransactions;
+    const source = isAdminAuthorized ? adminAllTransactions : myTransactions;
     return [...source].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [isFirebaseAdmin, adminAllTransactions, myTransactions]);
+  }, [isAdminAuthorized, adminAllTransactions, myTransactions]);
 
   const reports = useMemo<Report[]>(() => {
-    const source = isFirebaseAdmin ? adminAllReports : myReports;
+    const source = isAdminAuthorized ? adminAllReports : myReports;
     return [...source].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [isFirebaseAdmin, adminAllReports, myReports]);
+  }, [isAdminAuthorized, adminAllReports, myReports]);
 
   const notifications = useMemo<AppNotification[]>(() => {
-    const source = isFirebaseAdmin ? adminAllNotifications : myNotifications;
-    if (source.length === 0 && !firebaseUser) {
+    const source = isAdminAuthorized ? adminAllNotifications : myNotifications;
+    if (source.length === 0 && !isUserAuthenticated && !isAdminAuthorized) {
       return [
         {
           id: 'notif_welcome',
@@ -464,9 +579,9 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return [...source].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [isFirebaseAdmin, adminAllNotifications, myNotifications, firebaseUser]);
+  }, [isAdminAuthorized, adminAllNotifications, myNotifications, isUserAuthenticated]);
 
-  const favorites = firebaseUser ? dbFavorites : visitorFavorites;
+  const favorites = isUserAuthenticated ? dbFavorites : visitorFavorites;
 
   // =========================================================================
   // Auth & User Registration
@@ -474,6 +589,8 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const signInWithGoogle = async () => {
     const cred = await signInWithPopup(auth, googleProvider);
+    setStoredUserToken(null);
+    setHasCredentialSession(false);
     const { profile } = await apiFetch<{ profile: UserProfile | null }>(
       '/api/users/me',
       {},
@@ -489,6 +606,59 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { firebaseUser: cred.user, profileExists: true, profile };
     }
     return { firebaseUser: cred.user, profileExists: false, profile: null };
+  };
+
+  const registerWithCredentials = async (userData: {
+    identifier: string;
+    password: string;
+    name: string;
+    businessName?: string;
+    email?: string;
+    phone: string;
+    whatsapp: string;
+    city: string;
+    neighborhood: string;
+    avatarUrl?: string;
+    role?: UserRole;
+  }): Promise<UserProfile> => {
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
+    const { token, user } = await apiFetch<{ token: string; user: UserProfile }>(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      },
+      null
+    );
+    setStoredUserToken(token);
+    setHasCredentialSession(true);
+    setCurrentUser(user);
+    await refreshBootstrap(null);
+    return user;
+  };
+
+  const loginWithCredentials = async (
+    identifier: string,
+    password: string
+  ): Promise<UserProfile> => {
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
+    const { token, user } = await apiFetch<{ token: string; user: UserProfile }>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ identifier, password }),
+      },
+      null
+    );
+    setStoredUserToken(token);
+    setHasCredentialSession(true);
+    setCurrentUser(user);
+    await refreshBootstrap(null);
+    return user;
   };
 
   const registerUser = async (userData: {
@@ -522,8 +692,15 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return user;
   };
 
-  const loginUser = async (): Promise<{ success: boolean; message?: string; user?: UserProfile }> => {
+  const loginUser = async (
+    identifier?: string,
+    password?: string
+  ): Promise<{ success: boolean; message?: string; user?: UserProfile }> => {
     try {
+      if (identifier && password) {
+        const user = await loginWithCredentials(identifier, password);
+        return { success: true, user };
+      }
       const res = await signInWithGoogle();
       if (!res.profileExists || !res.profile) {
         return {
@@ -541,8 +718,17 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const logoutUser = async () => {
-    await signOut(auth);
+    setStoredUserToken(null);
+    setHasCredentialSession(false);
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
     setCurrentUser(null);
+    setMyListings([]);
+    setDbFavorites([]);
+    setMyNotifications([]);
+    setMyTransactions([]);
+    setMyReports([]);
     setCurrentView('home');
   };
 
@@ -550,8 +736,18 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Admin Security Gate & Seed
   // =========================================================================
 
+  const setAdminAuthenticated = (nextAuth: boolean) => {
+    if (!nextAuth) {
+      setStoredAdminToken(null);
+      setAdminAuthenticatedState(false);
+      void refreshBootstrap();
+    } else {
+      setAdminAuthenticatedState(true);
+    }
+  };
+
   const seedFirestoreData = async (force = false): Promise<void> => {
-    if (!isFirebaseAdmin || !auth.currentUser) return;
+    if (!isAdminAuthorized) return;
     await apiFetch('/api/admin/seed', {
       method: 'POST',
       body: JSON.stringify({ force }),
@@ -559,27 +755,49 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await refreshBootstrap();
   };
 
-  const verifyAdminPassword = (password: string): boolean => {
-    if (password === adminPasswordHash) {
-      setAdminAuthenticated(true);
-      return true;
+  const loginAdmin = async (
+    login: string,
+    password: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { token } = await apiFetch<{ ok: boolean; token: string }>('/api/admin/login', {
+        method: 'POST',
+        body: JSON.stringify({ login, password }),
+      });
+      setStoredAdminToken(token);
+      setAdminAuthenticatedState(true);
+      await refreshBootstrap();
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Identifiant ou mot de passe administrateur incorrect.',
+      };
     }
-    return false;
   };
 
-  const verifyAdminCredentials = (login: string, password: string): boolean => {
-    if (login.trim().toLowerCase() !== 'adminlokoda') {
-      return false;
+  const updateAdminPasswordAsync = async (
+    oldPassword: string,
+    newPassword: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      await apiFetch('/api/admin/password', {
+        method: 'POST',
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Impossible de modifier le mot de passe administrateur.",
+      };
     }
-    return verifyAdminPassword(password);
-  };
-
-  const updateAdminPassword = (oldPass: string, newPass: string): boolean => {
-    if (verifyAdminPassword(oldPass)) {
-      setAdminPasswordHash(newPass);
-      return true;
-    }
-    return false;
   };
 
   // =========================================================================
@@ -587,7 +805,8 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // =========================================================================
 
   const toggleFavorite = async (id: string) => {
-    if (!firebaseUser) {
+    const hasSession = Boolean(auth.currentUser || getStoredUserToken());
+    if (!hasSession) {
       setVisitorFavorites((prev) => {
         const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
         try {
@@ -616,7 +835,7 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // =========================================================================
 
   const addNotification = async (notif: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser && !getStoredUserToken() && !getStoredAdminToken()) return;
     await apiFetch('/api/notifications', {
       method: 'POST',
       body: JSON.stringify(notif),
@@ -625,7 +844,7 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const markNotificationRead = async (id: string) => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser && !getStoredUserToken() && !getStoredAdminToken()) return;
     await apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, {
       method: 'PATCH',
     });
@@ -633,7 +852,7 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const clearAllNotifications = async () => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser && !getStoredUserToken() && !getStoredAdminToken()) return;
     await apiFetch('/api/notifications', { method: 'DELETE' });
     await refreshBootstrap();
   };
@@ -648,7 +867,7 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       'id' | 'createdAt' | 'viewsCount' | 'callClicksCount' | 'whatsappClicksCount' | 'status'
     >
   ): Promise<Listing> => {
-    if (!auth.currentUser) {
+    if (!auth.currentUser && !getStoredUserToken()) {
       throw new Error('Veuillez vous connecter avant de publier une annonce.');
     }
     const { listing } = await apiFetch<{ listing: Listing }>('/api/listings', {
@@ -656,7 +875,6 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       body: JSON.stringify(listingData),
     });
     await refreshBootstrap();
-    setCurrentView('vendor_dashboard');
     return listing;
   };
 
@@ -675,11 +893,47 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await refreshBootstrap();
   };
 
-  const approveListing = async (id: string) => {
+  const approveListing = async (
+    id: string,
+    options?: { durationDays?: number | null; isPriority?: boolean }
+  ) => {
     await apiFetch(`/api/listings/${encodeURIComponent(id)}/approve`, {
       method: 'POST',
+      body: JSON.stringify(options || {}),
     });
     await refreshBootstrap();
+  };
+
+  const setListingPriority = async (id: string, isPriority: boolean) => {
+    await apiFetch(`/api/listings/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isPriority }),
+    });
+    await refreshBootstrap();
+  };
+
+  const setListingDuration = async (id: string, durationDays: number | null) => {
+    await apiFetch(`/api/listings/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ durationDays }),
+    });
+    await refreshBootstrap();
+  };
+
+  const uploadListingPaymentReceipt = async (
+    id: string,
+    receiptUrl: string,
+    receiptName: string
+  ): Promise<Listing> => {
+    const { listing } = await apiFetch<{ listing: Listing }>(
+      `/api/listings/${encodeURIComponent(id)}/receipt`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ receiptUrl, receiptName }),
+      }
+    );
+    await refreshBootstrap();
+    return listing;
   };
 
   const rejectListing = async (id: string, reason: string) => {
@@ -742,7 +996,8 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     data: Omit<Transaction, 'id' | 'reference' | 'status' | 'createdAt'>
   ): Promise<Transaction> => {
     let fbUser = auth.currentUser;
-    if (!fbUser) {
+    const storedToken = getStoredUserToken();
+    if (!fbUser && !storedToken) {
       const cred = await signInWithPopup(auth, googleProvider);
       fbUser = cred.user;
     }
@@ -769,7 +1024,8 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const submitReport = async (data: Omit<Report, 'id' | 'status' | 'createdAt'>) => {
     let fbUser = auth.currentUser;
-    if (!fbUser) {
+    const storedToken = getStoredUserToken();
+    if (!fbUser && !storedToken) {
       const cred = await signInWithPopup(auth, googleProvider);
       fbUser = cred.user;
     }
@@ -871,18 +1127,20 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         firebaseUser,
         authReady,
         isFirebaseAdmin,
+        isAdminAuthorized,
         currentUser,
         isLoggedIn: currentUser !== null,
         signInWithGoogle,
         loginUser,
+        registerWithCredentials,
+        loginWithCredentials,
         registerUser,
         logoutUser,
         adminAuthenticated,
         setAdminAuthenticated,
         adminPasswordVerified: adminAuthenticated,
-        verifyAdminPassword,
-        verifyAdminCredentials,
-        updateAdminPassword,
+        loginAdmin,
+        updateAdminPasswordAsync,
         seedFirestoreData: () => seedFirestoreData(false),
         selectedCity,
         setSelectedCity,
@@ -903,6 +1161,9 @@ export const MarketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateListing,
         deleteListing,
         approveListing,
+        setListingPriority,
+        setListingDuration,
+        uploadListingPaymentReceipt,
         rejectListing,
         suspendListing,
         trackListingView,

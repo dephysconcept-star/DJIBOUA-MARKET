@@ -5,9 +5,7 @@ import {
   MessageCircle, 
   Heart, 
   CheckCircle2, 
-  Eye, 
-  ShieldCheck, 
-  ShoppingBag
+  Eye
 } from 'lucide-react';
 import { Listing } from '../types';
 import { useMarket } from '../context/MarketContext';
@@ -20,8 +18,7 @@ interface ListingCardProps {
 
 export const ListingCard: React.FC<ListingCardProps> = ({ 
   listing, 
-  onOpenDetail,
-  onQuickBuy
+  onOpenDetail
 }) => {
   const { 
     isFavorite, 
@@ -59,19 +56,14 @@ export const ListingCard: React.FC<ListingCardProps> = ({
     toggleFavorite(listing.id);
   };
 
-  const handleBuy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onQuickBuy) {
-      onQuickBuy(listing);
-    } else {
-      onOpenDetail(listing);
-    }
-  };
-
   return (
     <div 
       onClick={() => onOpenDetail(listing)}
-      className="group bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-xl hover:border-blue-400 transition-all duration-300 flex flex-col cursor-pointer relative"
+      className={`group bg-white rounded-2xl border overflow-hidden shadow-xs hover:shadow-xl hover:border-blue-400 transition-all duration-300 flex flex-col cursor-pointer relative ${
+        listing.isPriority
+          ? 'border-amber-400 ring-1 ring-amber-300/70'
+          : 'border-slate-200'
+      }`}
     >
       {/* Photo Container */}
       <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
@@ -82,8 +74,8 @@ export const ListingCard: React.FC<ListingCardProps> = ({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
 
-        {/* Condition Badge (Neuf / Occasion) */}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+        {/* Condition & Priority Badges */}
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap pr-10">
           <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md shadow-xs ${
             listing.condition === 'neuf'
               ? 'bg-emerald-600 text-white'
@@ -92,7 +84,13 @@ export const ListingCard: React.FC<ListingCardProps> = ({
             {listing.condition === 'neuf' ? 'Neuf' : 'Occasion'}
           </span>
 
-          {listing.featured && (
+          {listing.isPriority && (
+            <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-blue-950 text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs">
+              ★ Prioritaire
+            </span>
+          )}
+
+          {listing.featured && !listing.isPriority && (
             <span className="bg-amber-400 text-blue-950 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md shadow-xs">
               ★ Sponsorisé
             </span>
@@ -183,15 +181,6 @@ export const ListingCard: React.FC<ListingCardProps> = ({
           >
             <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
             <span>WhatsApp</span>
-          </button>
-
-          {/* Direct Buy / Secure checkout */}
-          <button
-            onClick={handleBuy}
-            className="p-1.5 bg-amber-400 hover:bg-amber-500 text-blue-950 rounded-xl transition-colors shadow-xs"
-            title="Acheter avec paiement Mobile Money sécurisé"
-          >
-            <ShoppingBag className="w-4 h-4" />
           </button>
         </div>
       </div>

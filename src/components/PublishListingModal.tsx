@@ -9,9 +9,14 @@ import {
   Sparkles,
   AlertCircle,
   Loader2,
+  Camera,
+  FileText,
+  MessageCircle,
+  Share2,
+  CheckCircle2,
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
-import { ListingCondition } from '../types';
+import { Listing, ListingCondition } from '../types';
 import { compressImageFile } from '../utils/imageCompression';
 
 interface PublishListingModalProps {
@@ -54,15 +59,43 @@ const PHOTO_PRESETS = [
   },
 ];
 
+const formatAdminWhatsAppDigits = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return '2250777733284';
+  return digits.startsWith('225') ? digits : `225${digits}`;
+};
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Impossible de lire le fichier sélectionné.'));
+    reader.readAsDataURL(file);
+  });
 
 export const PublishListingModal: React.FC<PublishListingModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { categories, cities, currentUser, addListing, settings } = useMarket();
+  const {
+    categories,
+    cities,
+    currentUser,
+    addListing,
+    uploadListingPaymentReceipt,
+    settings,
+  } = useMarket();
 
-  const [step, setStep] = useState<'form' | 'preview'>('form');
+  const [step, setStep] = useState<'form' | 'preview' | 'receipt'>('form');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdListing, setCreatedListing] = useState<Listing | null>(null);
+
+  // Payment receipt upload state (Step 3)
+  const [receiptUrl, setReceiptUrl] = useState<string>('');
+  const [receiptName, setReceiptName] = useState<string>('');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [isSavingReceipt, setIsSavingReceipt] = useState(false);
+  const [receiptSaved, setReceiptSaved] = useState(false);
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -192,7 +225,7 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
         : selectedNeighborhood;
 
     try {
-      await addListing({
+      const created = await addListing({
         title: title.trim(),
         price: Number(price),
         categoryId,
@@ -211,8 +244,8 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
         addressDetails: addressDetails.trim() || undefined,
       });
 
-      onSuccess();
-      onClose();
+      setCreatedListing(created);
+      setStep('receipt');
     } catch {
       setError(
         "Impossible d'enregistrer l'annonce pour le moment. Vérifiez votre connexion et vos champs."
@@ -221,6 +254,105 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  const handleReceiptFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setReceiptSaved(false);
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Le fichier sélectionné est trop volumineux (maximum 10 Mo).');
+      return;
+    }
+
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImageFile(file, 900, 180000);
+        setReceiptUrl(compressed);
+        setReceiptName(file.name);
+        setReceiptFile(file);
+      } else {
+        if (file.size > 240 * 1024) {
+          setError(
+            'Pour les fichiers PDF/documents, la taille maximale est de 240 Ko. Préférez une capture photo si le fichier est plus lourd.'
+          );
+          return;
+        }
+        const dataUrl = await readFileAsDataUrl(file);
+        setReceiptUrl(dataUrl);
+        setReceiptName(file.name);
+        setReceiptFile(file);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du chargement du reçu.');
+    }
+  };
+
+  const handleSaveReceipt = async (): Promise<boolean> => {
+    if (!createdListing || !receiptUrl) return false;
+    setError(null);
+    setIsSavingReceipt(true);
+    try {
+      const updated = await uploadListingPaymentReceipt(
+        createdListing.id,
+        receiptUrl,
+        receiptName || 'recu_paiement'
+      );
+      setCreatedListing(updated);
+      setReceiptSaved(true);
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible d'enregistrer la capture du reçu pour le moment."
+      );
+      return false;
+    } finally {
+      setIsSavingReceipt(false);
+    }
+  };
+
+  const handleShareReceiptNative = async () => {
+    if (!createdListing || !receiptFile || typeof navigator === 'undefined' || !navigator.share) {
+      return;
+    }
+    try {
+      if (!receiptSaved) {
+        await handleSaveReceipt();
+      }
+      await navigator.share({
+        title: `Reçu de paiement - ${createdListing.title}`,
+        text: `Reçu de paiement pour l'annonce "${createdListing.title}" (${createdListing.id}) - Vendeur: ${createdListing.sellerName}`,
+        files: [receiptFile],
+      });
+    } catch {
+      // User cancelled share sheet
+    }
+  };
+
+  const finishAndClose = () => {
+    onSuccess();
+    onClose();
+  };
+
+  const adminWaDigits = formatAdminWhatsAppDigits(settings.contactWhatsApp);
+  const adminWaMessage = createdListing
+    ? encodeURIComponent(
+        `Bonjour Administrateur DJIBOUA MARKET,\n` +
+          `Je viens de soumettre mon annonce "${createdListing.title}" (Réf: ${createdListing.id}) à ${createdListing.price.toLocaleString('fr-FR')} FCFA (${createdListing.city} • ${createdListing.neighborhood}).\n` +
+          `Vendeur : ${createdListing.sellerName} (${createdListing.sellerPhone}).\n` +
+          `Je vous envoie ci-joint la capture de mon reçu de paiement${receiptName ? ` (${receiptName})` : ''} pour validation et mise en ligne.`
+      )
+    : '';
+  const adminWaHref = `https://wa.me/${adminWaDigits}?text=${adminWaMessage}`;
+  const canShareFileNatively = Boolean(
+    receiptFile &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [receiptFile] })
+  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -236,14 +368,16 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
               <h3 className="font-bold text-base sm:text-lg">
                 {step === 'form'
                   ? 'Publier une nouvelle annonce'
-                  : 'Prévisualisation de votre annonce'}
+                  : step === 'preview'
+                    ? 'Prévisualisation de votre annonce'
+                    : 'Reçu de paiement & Envoi Administrateur'}
               </h3>
               <p className="text-xs text-blue-200">DJIBOUA MARKET • Divo, Lakota, Gagnoa, Guitry</p>
             </div>
           </div>
 
           <button
-            onClick={onClose}
+            onClick={step === 'receipt' ? finishAndClose : onClose}
             className="p-1.5 rounded-full hover:bg-white/10 text-blue-200 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
@@ -258,7 +392,7 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
         )}
 
         {/* STEP 1: Form Wizard */}
-        {step === 'form' ? (
+        {step === 'form' && (
           <form onSubmit={handleGoToPreview} className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
             {/* Title & Category */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -570,8 +704,10 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
               </button>
             </div>
           </form>
-        ) : (
-          /* STEP 2: Preview Mode */
+        )}
+
+        {/* STEP 2: Preview Mode */}
+        {step === 'preview' && (
           <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-blue-700 shrink-0" />
@@ -652,8 +788,174 @@ export const PublishListingModal: React.FC<PublishListingModalProps> = ({
                     <span>Enregistrement...</span>
                   </>
                 ) : (
-                  <span>Confirmer et Publier l'annonce</span>
+                  <span>Confirmer et Soumettre l'annonce</span>
                 )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Payment Receipt Capture Upload & WhatsApp Admin Send */}
+        {step === 'receipt' && createdListing && (
+          <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs">
+                <h4 className="font-black text-emerald-900 text-sm">
+                  Annonce "{createdListing.title}" enregistrée avec succès !
+                </h4>
+                <p className="text-emerald-800">
+                  Vous pouvez maintenant joindre la <strong>capture photo ou le fichier de votre reçu de paiement</strong> et l'envoyer directement au numéro WhatsApp de l'administrateur (
+                  <strong className="font-mono">{settings.contactWhatsApp}</strong>) pour accélérer la validation et définir la durée d'affichage.
+                </p>
+              </div>
+            </div>
+
+            {/* File / Photo Capture Selection */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                1. Joindre votre capture photo ou reçu de paiement
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="px-4 py-3 bg-white hover:bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs font-bold text-blue-900 transition">
+                  <Camera className="w-4 h-4 text-blue-700" />
+                  <span>Capture photo / Galerie</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleReceiptFileChange}
+                    className="hidden"
+                  />
+                </label>
+
+                <label className="px-4 py-3 bg-white hover:bg-amber-50 border-2 border-dashed border-amber-300 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs font-bold text-slate-800 transition">
+                  <FileText className="w-4 h-4 text-amber-600" />
+                  <span>Fichier reçu (Image ou PDF)</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    onChange={handleReceiptFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {receiptUrl && (
+                <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {receiptUrl.startsWith('data:image/') ? (
+                      <img
+                        src={receiptUrl}
+                        alt="Capture reçu"
+                        className="w-16 h-16 rounded-lg object-cover border border-slate-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                    )}
+                    <div className="min-w-0 text-xs">
+                      <p className="font-bold text-slate-900 truncate">
+                        {receiptName || 'Capture du reçu'}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {receiptSaved
+                          ? '✓ Enregistré sur votre annonce pour vérification admin'
+                          : 'Prêt à être enregistré et envoyé'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSavingReceipt}
+                    onClick={() => void handleSaveReceipt()}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition flex items-center gap-1.5 ${
+                      receiptSaved
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-blue-900 hover:bg-blue-950 text-white'
+                    }`}
+                  >
+                    {isSavingReceipt ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Enregistrement...</span>
+                      </>
+                    ) : receiptSaved ? (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Capture enregistrée</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Enregistrer la capture</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Send to Administrator WhatsApp */}
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
+              <div className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                2. Envoyer au numéro WhatsApp de l'administrateur
+              </div>
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Numéro WhatsApp Administrateur :{' '}
+                <strong className="font-mono bg-white px-2 py-0.5 rounded border border-emerald-200">
+                  {settings.contactWhatsApp}
+                </strong>
+                . Cliquez sur le bouton ci-dessous pour ouvrir la discussion WhatsApp préremplie avec les références de votre annonce et joindre votre capture dans le chat.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <a
+                  href={adminWaHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    if (receiptUrl && !receiptSaved) {
+                      void handleSaveReceipt();
+                    }
+                  }}
+                  className="flex-1 min-w-[220px] py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Envoyer au WhatsApp Administrateur ({settings.contactWhatsApp})</span>
+                </a>
+
+                {canShareFileNatively && (
+                  <button
+                    type="button"
+                    onClick={() => void handleShareReceiptNative()}
+                    className="py-3 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5"
+                  >
+                    <Share2 className="w-4 h-4 text-amber-300" />
+                    <span>Partager le fichier</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={finishAndClose}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+              >
+                Envoyer plus tard depuis mon espace vendeur
+              </button>
+
+              <button
+                type="button"
+                onClick={finishAndClose}
+                className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-blue-950 font-black rounded-xl text-sm shadow-md transition"
+              >
+                Terminer et voir mes annonces
               </button>
             </div>
           </div>

@@ -10,6 +10,10 @@ import {
   Trash2,
   Store,
   ShoppingBag,
+  Eye,
+  EyeOff,
+  KeyRound,
+  UserCheck,
 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 import { compressImageFile } from '../utils/imageCompression';
@@ -31,7 +35,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   subtitle = 'Veuillez créer un compte ou vous connecter pour continuer.',
   defaultRole = 'seller',
 }) => {
-  const { cities, registerUser, signInWithGoogle, firebaseUser } = useMarket();
+  const {
+    cities,
+    registerUser,
+    registerWithCredentials,
+    loginWithCredentials,
+    signInWithGoogle,
+    firebaseUser,
+  } = useMarket();
 
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [accountRole, setAccountRole] = useState<'buyer' | 'seller'>(defaultRole);
@@ -50,6 +61,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [phone, setPhone] = useState('+225 07 ');
   const [whatsapp, setWhatsapp] = useState('+225 07 ');
   const [sameAsPhone, setSameAsPhone] = useState(true);
+
+  // Credential Registration Fields
+  const [regIdentifier, setRegIdentifier] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+
+  // Credential Login Fields
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -118,18 +140,54 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
+    // If not already signed in with Google, validate identifier + password
+    if (!firebaseUser) {
+      const cleanId = regIdentifier.trim();
+      if (cleanId.length < 3) {
+        setError(
+          "Veuillez choisir un identifiant de connexion (email, numéro ou pseudo d'au moins 3 caractères)."
+        );
+        return;
+      }
+      if (regPassword.length < 6) {
+        setError('Votre mot de passe doit comporter au moins 6 caractères.');
+        return;
+      }
+      if (regPassword !== regConfirmPassword) {
+        setError('Les deux mots de passe ne correspondent pas.');
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
-      await registerUser({
-        name: name.trim(),
-        businessName: businessName.trim() || undefined,
-        phone: phone.trim(),
-        whatsapp: sameAsPhone ? phone.trim() : whatsapp.trim(),
-        city: selectedCity,
-        neighborhood: finalNeighborhood,
-        avatarUrl: customAvatar || undefined,
-        role: accountRole,
-      });
+      if (firebaseUser) {
+        await registerUser({
+          name: name.trim(),
+          businessName: businessName.trim() || undefined,
+          phone: phone.trim(),
+          whatsapp: sameAsPhone ? phone.trim() : whatsapp.trim(),
+          city: selectedCity,
+          neighborhood: finalNeighborhood,
+          avatarUrl: customAvatar || undefined,
+          role: accountRole,
+        });
+      } else {
+        const cleanId = regIdentifier.trim();
+        await registerWithCredentials({
+          identifier: cleanId,
+          password: regPassword,
+          name: name.trim(),
+          businessName: businessName.trim() || undefined,
+          email: cleanId.includes('@') ? cleanId : undefined,
+          phone: phone.trim(),
+          whatsapp: sameAsPhone ? phone.trim() : whatsapp.trim(),
+          city: selectedCity,
+          neighborhood: finalNeighborhood,
+          avatarUrl: customAvatar || undefined,
+          role: accountRole,
+        });
+      }
 
       onSuccess();
       onClose();
@@ -137,9 +195,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('popup-closed-by-user')) {
         setError('La fenêtre de vérification Google a été fermée avant la fin.');
+      } else if (msg) {
+        setError(msg);
       } else {
         setError('Erreur lors de la création ou de l’enregistrement du compte dans la base de données.');
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCredentialLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!loginIdentifier.trim() || !loginPassword) {
+      setError('Veuillez saisir votre identifiant et votre mot de passe.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await loginWithCredentials(loginIdentifier.trim(), loginPassword);
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : 'Identifiant ou mot de passe incorrect.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -164,12 +246,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('popup-closed-by-user')) {
-        setError('La connexion Google a été annulée.');
+      if (msg.includes('popup-closed-by-user') || msg.includes('cancelled-popup-request')) {
+        setError(
+          'La fenêtre Google a été fermée ou annulée. Vous pouvez aussi utiliser votre identifiant et mot de passe.'
+        );
+      } else if (msg.includes('popup-blocked')) {
+        setError(
+          'La fenêtre Google a été bloquée par votre navigateur. Utilisez l’inscription par identifiant et mot de passe ci-dessous.'
+        );
+      } else if (msg.includes('unauthorized-domain')) {
+        setError(
+          'Connexion Google non disponible sur ce domaine. Veuillez utiliser votre identifiant et mot de passe.'
+        );
       } else if (msg.includes('suspendu')) {
         setError(msg);
       } else {
-        setError('Impossible de se connecter avec Google pour le moment.');
+        setError(
+          'Impossible de se connecter avec Google pour le moment. Utilisez votre identifiant et mot de passe.'
+        );
       }
     } finally {
       setIsLoading(false);
@@ -197,6 +291,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-white/10 text-blue-200 hover:text-white transition"
           >
@@ -259,12 +354,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onSubmit={handleRegisterSubmit}
             className="p-6 space-y-4 max-h-[65vh] overflow-y-auto text-xs"
           >
-            {firebaseUser && (
+            {firebaseUser ? (
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
                   Identité Google vérifiée : <strong>{firebaseUser.email}</strong>
                 </span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoading}
+                  className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2"
+                >
+                  <span className="w-4 h-4 rounded-full bg-blue-900 text-amber-400 font-black text-[10px] flex items-center justify-center">
+                    G
+                  </span>
+                  <span>S'inscrire rapidement avec Google</span>
+                </button>
+                <div className="relative flex items-center justify-center">
+                  <div className="border-t border-slate-200 w-full" />
+                  <span className="bg-white px-2.5 text-[11px] font-semibold text-slate-400 shrink-0">
+                    ou avec identifiant & mot de passe
+                  </span>
+                  <div className="border-t border-slate-200 w-full" />
+                </div>
               </div>
             )}
 
@@ -475,10 +591,79 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
             </div>
 
+            {/* Credentials section when not using Google */}
+            {!firebaseUser && (
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
+                <div className="flex items-center gap-1.5 text-blue-950 font-black uppercase tracking-wider text-[11px]">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-700" />
+                  <span>Identifiants de connexion</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">
+                    Identifiant (email, pseudo ou numéro) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoComplete="username"
+                    placeholder="Ex: kouassi.emmanuel ou email@exemple.ci"
+                    value={regIdentifier}
+                    onChange={(e) => setRegIdentifier(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 block">
+                      Mot de passe <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showRegPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        autoComplete="new-password"
+                        placeholder="Min. 6 caractères"
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        className="w-full pl-3.5 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        tabIndex={-1}
+                      >
+                        {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 block">
+                      Confirmer <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type={showRegPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                      placeholder="Répétez le mot de passe"
+                      value={regConfirmPassword}
+                      onChange={(e) => setRegConfirmPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Votre compte, vos coordonnées et vos opérations sont sauvegardés de manière sécurisée via votre compte Google.
+                Votre compte, vos coordonnées et vos opérations sont enregistrés de manière sécurisée dans la base de données DJIBOUA MARKET.
               </span>
             </div>
 
@@ -496,8 +681,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <>
                   <span>
                     {firebaseUser
-                      ? 'Enregistrer mon profil et continuer'
-                      : 'Vérifier avec Google et créer mon compte'}
+                      ? 'Enregistrer mon profil Google et continuer'
+                      : 'Créer mon compte et continuer'}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
@@ -505,34 +690,93 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
         ) : (
-          /* LOGIN VIEW */
+          /* LOGIN VIEW (Credentials OR Google) */
           <div className="p-6 space-y-4 text-xs">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-              <h4 className="font-bold text-sm text-slate-900">
-                Retrouvez votre compte DJIBOUA MARKET
-              </h4>
-              <p className="text-slate-600 leading-relaxed">
-                Connectez-vous avec le compte Google utilisé lors de votre inscription pour finaliser vos achats, suivre vos commandes et gérer vos annonces.
-              </p>
+            <form onSubmit={handleCredentialLogin} className="space-y-3.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5">
+                <UserCheck className="w-4 h-4 text-blue-800 shrink-0" />
+                <p className="text-slate-600">
+                  Connectez-vous avec votre <strong>identifiant et mot de passe</strong>, ou avec votre compte <strong>Google</strong>.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 uppercase tracking-wider block">
+                  Identifiant (pseudo, email ou téléphone)
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="username"
+                  placeholder="Ex: kouassi.emmanuel ou +225 07..."
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 uppercase tracking-wider block">
+                  Mot de passe
+                </label>
+                <div className="relative">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    placeholder="Votre mot de passe"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    tabIndex={-1}
+                  >
+                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 bg-blue-900 hover:bg-blue-950 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition shadow-md active:scale-95 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Connexion en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Se connecter</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="relative flex items-center justify-center">
+              <div className="border-t border-slate-200 w-full" />
+              <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 shrink-0">
+                ou
+              </span>
+              <div className="border-t border-slate-200 w-full" />
             </div>
 
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full py-3 bg-blue-900 hover:bg-blue-950 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition shadow-md active:scale-95 flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:opacity-60 text-slate-800 font-bold rounded-xl text-xs transition shadow-xs active:scale-95 flex items-center justify-center gap-2"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connexion en cours...</span>
-                </>
-              ) : (
-                <>
-                  <span>Se connecter avec Google</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              <span className="w-4 h-4 rounded-full bg-blue-900 text-amber-400 font-black text-[10px] flex items-center justify-center">
+                G
+              </span>
+              <span>Se connecter avec Google</span>
             </button>
           </div>
         )}

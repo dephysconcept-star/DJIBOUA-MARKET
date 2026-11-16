@@ -5,12 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createViteServer } from 'vite';
 import {
+  BOOTSTRAPPED_ADMIN_EMAIL,
   isDecodedAdmin,
   optionalAuth,
   requireAdmin,
   requireAuth,
   type AuthRequest,
 } from './src/middleware/auth.ts';
+import { createSessionToken } from './src/lib/session-token.ts';
 import {
   addNeighborhoodRecord,
   clearNotificationsRecord,
@@ -25,9 +27,12 @@ import {
   getListingById,
   getUserByUid,
   incrementListingMetric,
+  loginWithCredentialsRecord,
   markNotificationReadRecord,
+  registerWithCredentialsRecord,
   seedInitialDatabase,
   toggleFavoriteRecord,
+  updateAdminPasswordRecord,
   updateListingRecord,
   updateReportStatusRecord,
   updateSettingsRecord,
@@ -36,6 +41,7 @@ import {
   updateUserStatusRecord,
   upsertCityRecord,
   upsertRegisteredUser,
+  verifyAdminCredentialsRecord,
 } from './src/db/repository.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,13 +67,166 @@ async function startServer() {
   app.get('/api/bootstrap', optionalAuth, async (req: AuthRequest, res) => {
     try {
       const uid = req.user?.uid;
-      const isAdmin = isDecodedAdmin(req.user);
+      const isAdmin = isDecodedAdmin(req.user, req.adminAuthorized);
       const data = await getBootstrapData(uid, isAdmin);
       res.json(data);
     } catch (error) {
       const err = error as Error;
       console.error('Failed to load bootstrap data:', err);
       res.status(500).json({ error: err.message || 'Database query failed' });
+    }
+  });
+
+  // =========================================================================
+  // Credential Authentication (Identifier + Password) & Admin Portal Auth
+  // =========================================================================
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const identifier = clampStr(body.identifier || body.email || body.phone, 120);
+      const password = typeof body.password === 'string' ? body.password : '';
+      const cleanName = clampStr(body.name, 120);
+      const cleanPhone = clampStr(body.phone, 40);
+      const cleanCity = clampStr(body.city || 'Divo', 80);
+      const cleanNeighborhood = clampStr(body.neighborhood || 'Plateau', 120);
+
+      if (identifier.length < 3) {
+        return res.status(400).json({
+          error: "Veuillez choisir un identifiant valide (email, téléphone ou pseudo d'au moins 3 caractères).",
+        });
+      }
+      if (password.length < 6 || password.length > 128) {
+        return res.status(400).json({
+          error: 'Le mot de passe doit contenir au moins 6 caractères.',
+        });
+      }
+      if (cleanName.length < 2) {
+        return res.status(400).json({ error: 'Veuillez saisir votre nom complet.' });
+      }
+      if (cleanPhone.replace(/\D/g, '').length < 8) {
+        return res.status(400).json({ error: 'Veuillez saisir un numéro de téléphone valide.' });
+      }
+
+      const role = body.role === 'buyer' ? 'buyer' : 'seller';
+      const avatarUrl = clampStr(
+        body.avatarUrl ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+        60000
+      );
+
+      const user = await registerWithCredentialsRecord({
+        identifier,
+        password,
+        name: cleanName,
+        businessName: clampStr(body.businessName, 140) || undefined,
+        email: clampStr(body.email, 160) || undefined,
+        phone: cleanPhone,
+        whatsapp: clampStr(body.whatsapp || cleanPhone, 40),
+        role,
+        city: cleanCity,
+        neighborhood: cleanNeighborhood,
+        avatarUrl,
+      });
+
+      await createNotificationRecord({
+        id: safeId(`notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`),
+        userId: user.id,
+        title: 'Compte activé sur DJIBOUA MARKET',
+        message: `Bienvenue ${cleanName} ! Votre compte a été créé avec votre identifiant.`,
+        type: 'system',
+        read: false,
+      });
+
+      const token = createSessionToken({
+        uid: user.id,
+        email: user.email,
+        name: user.name,
+        isAdmin: false,
+      });
+
+      res.status(201).json({ token, user });
+    } catch (error) {
+      const err = error as Error;
+      const msg = err.message || 'Erreur lors de la création du compte';
+      const status = msg.includes('existe déjà') ? 409 : 400;
+      res.status(status).json({ error: msg });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const identifier = clampStr(body.identifier, 120);
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (!identifier || !password) {
+        return res.status(400).json({ error: 'Veuillez saisir votre identifiant et votre mot de passe.' });
+      }
+
+      const user = await loginWithCredentialsRecord(identifier, password);
+      const token = createSessionToken({
+        uid: user.id,
+        email: user.email,
+        name: user.name,
+        isAdmin: user.role === 'admin',
+      });
+      res.json({ token, user });
+    } catch (error) {
+      const err = error as Error;
+      const msg = err.message || 'Identifiant ou mot de passe incorrect.';
+      const status = msg.includes('suspendu') ? 403 : 401;
+      res.status(status).json({ error: msg });
+    }
+  });
+
+  app.post('/api/admin/login', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const login = clampStr(body.login, 120);
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (!login || !password) {
+        return res.status(400).json({ error: 'Identifiant et mot de passe requis.' });
+      }
+      const valid = await verifyAdminCredentialsRecord(login, password);
+      if (!valid) {
+        return res.status(401).json({ error: 'Identifiant ou mot de passe administrateur incorrect.' });
+      }
+
+      const token = createSessionToken({
+        uid: 'admin_lokoda',
+        email: BOOTSTRAPPED_ADMIN_EMAIL,
+        name: 'Administrateur DJIBOUA',
+        isAdmin: true,
+      });
+      res.json({ ok: true, token });
+    } catch (error) {
+      const err = error as Error;
+      res.status(500).json({ error: err.message || 'Admin authentication failed' });
+    }
+  });
+
+  app.post('/api/admin/password', requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const oldPassword = typeof req.body?.oldPassword === 'string' ? req.body.oldPassword : '';
+      const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+      if (newPassword.length < 8) {
+        return res
+          .status(400)
+          .json({ error: 'Le nouveau mot de passe doit comporter au moins 8 caractères.' });
+      }
+      const ok = await updateAdminPasswordRecord(oldPassword, newPassword);
+      if (!ok) {
+        return res.status(400).json({ error: "L'ancien mot de passe fourni est incorrect." });
+      }
+      await createAdminLogRecord({
+        action: 'Mot de passe administrateur mis à jour',
+        targetType: 'setting',
+        targetId: 'admin_lokoda',
+        adminId: req.user?.uid,
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      const err = error as Error;
+      res.status(500).json({ error: err.message || 'Failed to update admin password' });
     }
   });
 
@@ -136,7 +295,7 @@ async function startServer() {
     try {
       const targetId = req.params.id;
       const requester = req.user!;
-      if (requester.uid !== targetId && !isDecodedAdmin(requester)) {
+      if (requester.uid !== targetId && !isDecodedAdmin(requester, req.adminAuthorized)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       const body = req.body || {};
@@ -255,7 +414,7 @@ async function startServer() {
       if (!existing) {
         return res.status(404).json({ error: 'Annonce introuvable' });
       }
-      const isAdmin = isDecodedAdmin(req.user);
+      const isAdmin = isDecodedAdmin(req.user, req.adminAuthorized);
       if (existing.sellerId !== req.user!.uid && !isAdmin) {
         return res.status(403).json({ error: 'Forbidden' });
       }
@@ -281,6 +440,44 @@ async function startServer() {
       if (body.sellerWhatsApp !== undefined)
         updates.sellerWhatsApp = clampStr(body.sellerWhatsApp, 40);
 
+      if (isAdmin) {
+        if (body.isPriority !== undefined) {
+          updates.isPriority = Boolean(body.isPriority);
+        }
+        if (body.durationDays !== undefined) {
+          if (body.durationDays === null || body.durationDays === '' || body.durationDays === 0) {
+            updates.durationDays = null;
+            updates.expiresAt = null;
+          } else {
+            const days = Number(body.durationDays);
+            if (![7, 14, 21, 30].includes(days)) {
+              return res.status(400).json({
+                error: 'Durée invalide. Choisissez 7, 14, 21 ou 30 jours (ou illimitée).',
+              });
+            }
+            updates.durationDays = days;
+            updates.expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+          }
+        }
+      }
+
+      if (body.paymentReceiptUrl !== undefined) {
+        const rawUrl = typeof body.paymentReceiptUrl === 'string' ? body.paymentReceiptUrl.trim() : '';
+        if (
+          rawUrl &&
+          !rawUrl.startsWith('data:') &&
+          !rawUrl.startsWith('https://') &&
+          !rawUrl.startsWith('http://')
+        ) {
+          return res.status(400).json({ error: 'Format de reçu de paiement invalide.' });
+        }
+        updates.paymentReceiptUrl = rawUrl ? rawUrl.slice(0, 350000) : null;
+        updates.paymentReceiptName = body.paymentReceiptName
+          ? clampStr(body.paymentReceiptName, 160)
+          : null;
+        updates.paymentReceiptSentAt = rawUrl ? new Date() : null;
+      }
+
       const updated = await updateListingRecord(id, updates);
       if (isAdmin) {
         await createAdminLogRecord({
@@ -305,7 +502,7 @@ async function startServer() {
       if (!existing) {
         return res.status(404).json({ error: 'Annonce introuvable' });
       }
-      const isAdmin = isDecodedAdmin(req.user);
+      const isAdmin = isDecodedAdmin(req.user, req.adminAuthorized);
       if (existing.sellerId !== req.user!.uid && !isAdmin) {
         return res.status(403).json({ error: 'Forbidden' });
       }
@@ -326,13 +523,96 @@ async function startServer() {
     }
   });
 
+  app.post('/api/listings/:id/receipt', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const id = req.params.id;
+      const existing = await getListingById(id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Annonce introuvable' });
+      }
+      const isAdmin = isDecodedAdmin(req.user, req.adminAuthorized);
+      if (existing.sellerId !== req.user!.uid && !isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const body = req.body || {};
+      const rawUrl = typeof body.receiptUrl === 'string' ? body.receiptUrl.trim() : '';
+      if (
+        !rawUrl ||
+        (!rawUrl.startsWith('data:') &&
+          !rawUrl.startsWith('https://') &&
+          !rawUrl.startsWith('http://'))
+      ) {
+        return res.status(400).json({
+          error: 'Veuillez joindre une capture photo ou un fichier valide du reçu de paiement.',
+        });
+      }
+      if (rawUrl.length > 350000) {
+        return res.status(400).json({
+          error: 'Le fichier est trop volumineux. Veuillez choisir une image ou un PDF plus léger (max 250 Ko).',
+        });
+      }
+
+      const receiptName = clampStr(body.receiptName || 'recu_paiement', 160);
+      const updated = await updateListingRecord(id, {
+        paymentReceiptUrl: rawUrl,
+        paymentReceiptName: receiptName,
+        paymentReceiptSentAt: new Date(),
+      });
+
+      await createAdminLogRecord({
+        action: 'Reçu de paiement vendeur envoyé',
+        targetType: 'listing',
+        targetId: id,
+        adminId: req.user?.uid,
+        details: `Annonce "${existing.title}" • Fichier: ${receiptName}`,
+      });
+
+      res.json({ listing: updated });
+    } catch (error) {
+      const err = error as Error;
+      res.status(500).json({ error: err.message || 'Failed to upload payment receipt' });
+    }
+  });
+
   app.post('/api/listings/:id/approve', requireAdmin, async (req: AuthRequest, res) => {
     try {
       const id = req.params.id;
-      const updated = await updateListingRecord(id, {
+      const existing = await getListingById(id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Annonce introuvable' });
+      }
+
+      const body = req.body || {};
+      const approveUpdates: Record<string, unknown> = {
         status: 'approved',
         rejectionReason: null,
-      });
+      };
+
+      if (body.durationDays !== undefined) {
+        if (body.durationDays === null || body.durationDays === '' || body.durationDays === 0) {
+          approveUpdates.durationDays = null;
+          approveUpdates.expiresAt = null;
+        } else {
+          const days = Number(body.durationDays);
+          if (![7, 14, 21, 30].includes(days)) {
+            return res.status(400).json({ error: 'Durée invalide.' });
+          }
+          approveUpdates.durationDays = days;
+          approveUpdates.expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        }
+      } else if (existing.durationDays && [7, 14, 21, 30].includes(existing.durationDays)) {
+        approveUpdates.durationDays = existing.durationDays;
+        approveUpdates.expiresAt = new Date(
+          Date.now() + existing.durationDays * 24 * 60 * 60 * 1000
+        );
+      }
+
+      if (body.isPriority !== undefined) {
+        approveUpdates.isPriority = Boolean(body.isPriority);
+      }
+
+      const updated = await updateListingRecord(id, approveUpdates);
       if (!updated) {
         return res.status(404).json({ error: 'Annonce introuvable' });
       }
@@ -580,7 +860,7 @@ async function startServer() {
       const fbUser = req.user!;
       const body = req.body || {};
       const targetUserId = body.userId || fbUser.uid;
-      if (targetUserId !== fbUser.uid && !isDecodedAdmin(fbUser)) {
+      if (targetUserId !== fbUser.uid && !isDecodedAdmin(fbUser, req.adminAuthorized)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       const created = await createNotificationRecord({
@@ -603,7 +883,7 @@ async function startServer() {
       await markNotificationReadRecord(
         req.params.id,
         req.user!.uid,
-        isDecodedAdmin(req.user)
+        isDecodedAdmin(req.user, req.adminAuthorized)
       );
       res.json({ ok: true });
     } catch (error) {

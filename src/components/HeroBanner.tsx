@@ -55,8 +55,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onOpenPublishModal, onOp
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              Achetez, vendez et trouvez <br className="hidden sm:inline" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200">
+              Achetez, vendez et trouvez
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200">
                 près de chez vous
               </span>
             </h1>
