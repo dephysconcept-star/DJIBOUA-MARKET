@@ -18,7 +18,7 @@ export const Footer: React.FC = () => {
             <LokodaLogo variant="light" size="lg" showTagline={true} />
             
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-              DJIBOUA MARKET est la marketplace de référence pour digitaliser le commerce de proximité à <strong>Divo</strong>, <strong>Lakota</strong>, <strong>Gagnoa</strong> et <strong>Guitry</strong>. Achetez, vendez et trouvez vos biens et services près de chez vous en contact direct ou par paiement sécurisé.
+              DJIBOUA MARKET est la marketplace de référence pour digitaliser le commerce de proximité à <strong>Divo</strong>, <strong>Lakota</strong>, <strong>Gagnoa</strong> et <strong>Guitry</strong>. Achetez, vendez et trouvez vos biens et services près de chez vous en contactant directement les vendeurs.
             </p>
 
             <div className="space-y-1.5 text-xs text-slate-400">
@@ -120,7 +120,7 @@ export const Footer: React.FC = () => {
                 <span>Conseil de prudence :</span>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-400">
-                Ne transférez pas d'argent sans vérifier le produit ou utilisez le paiement séquestre Mobile Money DJIBOUA MARKET. Rencontres en lieux publics recommandées.
+                Ne payez pas à l'avance. Rencontrez le vendeur dans un lieu public, vérifiez l'article et réglez-le directement.
               </p>
             </div>
           </div>

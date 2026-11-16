@@ -282,9 +282,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-white">Paiement Mobile Money</h4>
+                  <h4 className="font-bold text-white">Commande directe</h4>
                   <p className="text-blue-200 text-[11px] mt-0.5">
-                    Wave, Orange, MTN et Moov avec confirmation sécurisée.
+                    Réglez le vendeur en espèces à la remise de l'article.
                   </p>
                 </div>
               </div>

@@ -2095,7 +2095,7 @@ export const AdminDashboard: React.FC = () => {
                   3. Commission sur Paiement Électronique (Section 22.3)
                 </label>
                 <p className="text-slate-500">
-                  Taux prélevé sur les transactions sécurisées Mobile Money (CinetPay / Wave / Orange).
+                  Taux de commission configuré pour les transactions de la plateforme.
                 </p>
                 <div className="flex items-center gap-3 pt-1">
                   <input

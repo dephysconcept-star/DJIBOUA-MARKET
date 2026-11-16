@@ -1,18 +1,16 @@
 import React, { useState } from 'react';
 import { 
   X, 
-  ShieldCheck, 
   CheckCircle2, 
   Printer, 
   Truck, 
   MapPin, 
   ArrowRight, 
   AlertCircle,
-  Clock,
-  Sparkles
+  ShoppingBag
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Listing, PaymentMethod, DeliveryOption, Transaction } from '../types';
+import { Listing, DeliveryOption, Transaction } from '../types';
 import { useMarket } from '../context/MarketContext';
 
 interface PaymentModalProps {
@@ -28,8 +26,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const { createTransaction, currentUser, firebaseUser, isLoggedIn, firestoreListingIds, cities } = useMarket();
 
-  const [paymentType, setPaymentType] = useState<'electronic' | 'direct'>('electronic');
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('wave');
   const [deliveryOption, setDeliveryOption] = useState<DeliveryOption>('lokoda_express');
 
   // Buyer Info pre-filled from authenticated account
@@ -79,7 +75,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         sellerName: listing.sellerName,
         sellerPhone: listing.sellerPhone,
         sellerCity: listing.city,
-        method: paymentType === 'direct' ? 'cash_on_delivery' : selectedMethod,
+        method: 'cash_on_delivery',
         deliveryOption,
       });
 
@@ -120,9 +116,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         {/* Modal Top Bar */}
         <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-900 to-blue-950 text-white">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-amber-400" />
+            <ShoppingBag className="w-5 h-5 text-amber-400" />
             <h3 className="font-bold text-base sm:text-lg">
-              {status === 'success' ? 'Reçu officiel de commande' : 'Paiement Sécurisé DJIBOUA MARKET'}
+              {status === 'success' ? 'Reçu de commande' : 'Commander cet article'}
             </h3>
           </div>
           <button
@@ -143,7 +139,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
             {!firebaseUser && !isLoggedIn && (
               <div className="p-2.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-[11px]">
-                Une connexion à votre compte (identifiant/mot de passe ou Google) est requise lors de la validation pour sécuriser et archiver votre reçu.
+                Connectez-vous pour enregistrer votre commande et retrouver son reçu.
               </div>
             )}
             {/* Product Summary */}
@@ -215,109 +211,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
             </div>
 
-            {/* Payment Method Selector (Section 8.1 & 8.2) */}
+            {/* Payment at handoff */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Mode de Paiement
+                Règlement
               </label>
-
-              {/* Toggle Direct vs Electronic */}
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('electronic')}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                    paymentType === 'electronic'
-                      ? 'bg-white text-blue-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  ⚡ Mobile Money Sécurisé
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('direct')}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                    paymentType === 'direct'
-                      ? 'bg-white text-blue-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  🤝 Paiement au Vendeur (Espèces)
-                </button>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                <p className="font-bold">Paiement direct au vendeur, en espèces :</p>
+                <p className="mt-0.5 text-amber-800">
+                  Le règlement se fait à la remise de l'article. Vérifiez son état avant de payer.
+                  Aucun paiement en ligne n'est effectué sur le site.
+                </p>
               </div>
-
-              {/* Electronic Providers */}
-              {paymentType === 'electronic' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('wave')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                      selectedMethod === 'wave'
-                        ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 text-sky-900'
-                        : 'bg-white border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <span className="w-7 h-7 rounded-full bg-sky-500 text-white font-black text-xs flex items-center justify-center">
-                      W
-                    </span>
-                    <span className="text-xs font-bold">Wave CI</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('orange_money')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                      selectedMethod === 'orange_money'
-                        ? 'bg-orange-50 border-orange-500 ring-2 ring-orange-500/20 text-orange-900'
-                        : 'bg-white border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <span className="w-7 h-7 rounded-full bg-orange-500 text-white font-black text-xs flex items-center justify-center">
-                      OM
-                    </span>
-                    <span className="text-xs font-bold">Orange MoMo</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('mtn_momo')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                      selectedMethod === 'mtn_momo'
-                        ? 'bg-yellow-50 border-yellow-500 ring-2 ring-yellow-500/20 text-yellow-900'
-                        : 'bg-white border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <span className="w-7 h-7 rounded-full bg-yellow-400 text-blue-950 font-black text-xs flex items-center justify-center">
-                      M
-                    </span>
-                    <span className="text-xs font-bold">MTN MoMo</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('moov_money')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                      selectedMethod === 'moov_money'
-                        ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900'
-                        : 'bg-white border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <span className="w-7 h-7 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center">
-                      MM
-                    </span>
-                    <span className="text-xs font-bold">Moov Money</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-                  <p className="font-bold">Modalité de paiement en espèces :</p>
-                  <p className="mt-0.5 text-amber-800">
-                    Vous payez le vendeur directement lors de la remise du bien en main propre. Vérifiez minutieusement l'état du produit avant tout versement.
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Buyer Contact & Delivery Address */}
@@ -442,9 +347,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         {status === 'processing' && (
           <div className="p-12 text-center space-y-4">
             <div className="w-16 h-16 border-4 border-amber-400 border-t-blue-900 rounded-full animate-spin mx-auto" />
-            <h4 className="text-base font-bold text-slate-900">Traitement sécurisé de la transaction...</h4>
+            <h4 className="text-base font-bold text-slate-900">Enregistrement de votre commande...</h4>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Connexion à la passerelle Mobile Money Côte d'Ivoire. Veuillez patienter un instant.
+              Votre commande est transmise au vendeur. Le règlement se fera directement avec lui.
             </p>
           </div>
         )}
@@ -455,7 +360,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h4 className="text-lg font-black text-slate-900">Commande Confirmée avec Succès !</h4>
+              <h4 className="text-lg font-black text-slate-900">Commande enregistrée !</h4>
               <p className="text-xs text-slate-500">
                 Référence officielle : <strong className="text-blue-900 font-mono text-sm">{completedTransaction.reference}</strong>
               </p>
@@ -468,8 +373,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <span className="font-black text-blue-900">DJIBOUA MARKET</span>
                   <span className="text-[10px] text-slate-500 block">Divo • Lakota • Gagnoa • Guitry</span>
                 </div>
-                <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">
-                  PAYÉ & CONFIRMÉ
+                <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                  À RÉGLER AU VENDEUR
                 </span>
               </div>
 
@@ -478,11 +383,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <p><strong>Vendeur :</strong> {completedTransaction.sellerName} ({completedTransaction.sellerPhone})</p>
                 <p><strong>Acheteur :</strong> {completedTransaction.buyerName} ({completedTransaction.buyerPhone})</p>
                 <p><strong>Destination :</strong> {completedTransaction.buyerCity}, {completedTransaction.buyerNeighborhood}</p>
-                <p><strong>Mode :</strong> {completedTransaction.method.toUpperCase()} • {completedTransaction.deliveryOption === 'lokoda_express' ? 'Livraison DJIBOUA' : 'Retrait Direct'}</p>
+                <p><strong>Mode :</strong> Espèces au vendeur • {completedTransaction.deliveryOption === 'lokoda_express' ? 'Livraison DJIBOUA' : 'Retrait direct'}</p>
               </div>
 
               <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-sm text-slate-900">
-                <span>Montant Réglé :</span>
+                <span>Montant à régler :</span>
                 <span className="text-amber-600">{completedTransaction.totalAmount.toLocaleString('fr-FR')} FCFA</span>
               </div>
             </div>

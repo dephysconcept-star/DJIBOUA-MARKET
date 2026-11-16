@@ -111,7 +111,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ onOpenPublishModal, onOp
               </div>
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                <span>Paiement sécurisé Mobile Money</span>
+                <span>Paiement direct au vendeur</span>
               </div>
             </div>
           </div>

@@ -696,9 +696,9 @@ export const INITIAL_PROMO_BANNERS: PromoBannerSlide[] = [
   },
   {
     id: 'pub_3',
-    badge: 'PAIEMENT SÉCURISÉ',
-    title: 'Wave, Orange Money, MTN MoMo & Moov Money acceptés',
-    subtitle: 'Transactions protégées et suivi instantané dans votre espace personnel.',
+    badge: 'COMMANDE DIRECTE',
+    title: 'Commandez et réglez directement auprès du vendeur',
+    subtitle: 'Vérifiez votre article et payez à la remise en main propre.',
     ctaLabel: 'Explorer le marché',
     ctaUrl: '#listings',
     theme: 'emerald',

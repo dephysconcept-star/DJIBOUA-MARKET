@@ -763,17 +763,16 @@ async function startServer() {
         sellerName: clampStr(body.sellerName, 120),
         sellerPhone: clampStr(body.sellerPhone, 40),
         sellerCity: clampStr(body.sellerCity, 80),
-        method: clampStr(body.method || 'wave', 40),
-        status: 'paid',
+        method: 'cash_on_delivery',
+        status: 'pending',
         deliveryOption: body.deliveryOption === 'lokoda_express' ? 'lokoda_express' : 'direct',
-        paidAt: new Date(),
       });
 
       await createNotificationRecord({
         id: safeId(`notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`),
         userId: fbUser.uid,
-        title: 'Paiement Confirmé !',
-        message: `Votre commande #${ref} pour "${created.listingTitle}" a été enregistrée avec succès.`,
+        title: 'Commande enregistrée',
+        message: `Votre commande #${ref} pour "${created.listingTitle}" est enregistrée. Le règlement se fera directement auprès du vendeur.`,
         type: 'transaction',
         read: false,
       });

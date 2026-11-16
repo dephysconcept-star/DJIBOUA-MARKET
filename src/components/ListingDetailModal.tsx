@@ -192,7 +192,7 @@ export const ListingDetailModal: React.FC<ListingDetailModalProps> = ({
                 <span>Conseil de sécurité DJIBOUA MARKET à {listing.city} :</span>
               </div>
               <p className="text-[11px] leading-relaxed text-amber-800">
-                Ne payez jamais à l'avance sans garantie. Privilégiez un rendez-vous en lieu public (Grand Marché, carrefour, pharmacie) ou utilisez le paiement sécurisé Mobile Money DJIBOUA MARKET.
+                Ne payez pas à l'avance. Privilégiez un rendez-vous en lieu public et vérifiez l'article avant de régler le vendeur.
               </p>
             </div>
           </div>
@@ -310,13 +310,12 @@ export const ListingDetailModal: React.FC<ListingDetailModalProps> = ({
                 </button>
               </div>
 
-              {/* Electronic Mobile Money Payment */}
               <button
                 onClick={() => onOpenCheckout(listing)}
                 className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:to-amber-500 text-blue-950 font-black rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95 transition-all"
               >
                 <ShoppingBag className="w-4 h-4" />
-                <span>Acheter avec Paiement Sécurisé (Mobile Money)</span>
+                <span>Commander cet article</span>
               </button>
 
               {/* Bottom utilities */}
